@@ -130,7 +130,13 @@ export async function POST(request: NextRequest) {
         const uploadIds = results.filter(r => r.success).map(r => r.id);
         
         // Call analyze API to start automatic analysis
-        const analyzeResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/analyze`, {
+        // Dynamically detect base URL from request headers
+        const host = request.headers.get('host');
+        const protocol = request.headers.get('x-forwarded-proto') ||
+                        (host?.includes('localhost') ? 'http' : 'https');
+        const baseUrl = `${protocol}://${host}`;
+          
+        const analyzeResponse = await fetch(`${baseUrl}/api/analyze`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

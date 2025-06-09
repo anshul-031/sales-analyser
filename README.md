@@ -44,6 +44,53 @@ A modern AI-powered sales call analysis application built with Next.js and Googl
    http://localhost:3000
    ```
 
+## 🚀 Deployment
+
+### Vercel Deployment (Recommended)
+
+1. **Deploy to Vercel**
+   ```bash
+   npm install -g vercel
+   vercel --prod
+   ```
+
+2. **Configure Environment Variables**
+   In your Vercel dashboard, add:
+   ```env
+   GOOGLE_GEMINI_API_KEY=your_gemini_api_key_here
+   MAX_FILE_SIZE=52428800
+   AUTO_DELETE_FILES=true
+   ```
+
+3. **Deployment Notes**
+   - Vercel automatically sets `VERCEL_URL` environment variable
+   - Application uses relative URLs for internal API calls
+   - No additional configuration needed for file storage
+
+### Other Platforms
+
+For other platforms (Railway, Heroku, etc.), ensure:
+- Node.js 18+ runtime
+- Environment variables are properly set
+- File system write permissions (for uploads and data directories)
+
+### Deployment Troubleshooting
+
+**Common Issues:**
+
+**❌ API calls failing with ECONNREFUSED localhost:3000**
+- **Cause**: Application trying to make internal calls to localhost
+- **Solution**: Ensure `VERCEL_URL` or `NEXTAUTH_URL` is properly set
+- **Fixed**: Application now auto-detects deployment URL
+
+**❌ File upload errors**
+- **Cause**: Missing write permissions or directories
+- **Solution**: Ensure `/tmp` directory access (handled automatically)
+
+**❌ Environment variables not loaded**
+- **Cause**: Missing environment configuration
+- **Solution**: Set all required environment variables in deployment platform
+
 ## 🔧 Environment Configuration
 
 Create a `.env` file with the following variables:
