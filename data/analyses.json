@@ -1,0 +1,318 @@
+[
+  {
+    "status": "COMPLETED",
+    "analysisType": "default",
+    "userId": "demo-user-001",
+    "uploadId": "upload_1749449996044_zic0ty6f1",
+    "id": "analysis_1749450005381_1fgathj7a",
+    "createdAt": "2025-06-09T06:20:05.381Z",
+    "updatedAt": "2025-06-09T06:20:28.212Z",
+    "transcription": "Thank you for calling Martha's Florist. How may I assist you?\n\nHello, I'd like to order flowers and I think you have what I'm looking for.\n\nI'd be happy to take care of your order. May I have your name, please?\n\nRandolph Thomas.\n\nRandolph Thomas. Can you spell that for me?\n\nRandolph, R A N D O L L Thomas, T H O M A S.\n\nThank you for that information, Randolph. May I have your home or office number? Area code first.\n\nArea code 409, then 5866 5088.\n\nThat's 409 866 5088. Do you have a fax number or email address?\n\nMy email is randolph.thomas@gmail.com\n\nrandolph.thomas@gmail.com. May I have your shipping address?\n\n6800 Gladys Avenue, Beaumont, Texas. Zip code is 77706.\n\nGladys Avenue, Beaumont, Texas, zip code 77706. Thank you for the information. What products were you interested in purchasing?\n\nRed roses, probably a dozen.\n\nOne dozen of red roses. Do you want long stems?\n\nYes, sure.\n\nAll right, Randolph. Let me process your order. One moment, please.\n\nOkay.\n\nRandolph, you are ordering one dozen long stemmed red roses. The total amount of your order is $40 and it will be shipped to your address within 24 hours.\n\nHow soon can you deliver my roses again?\n\nWithin 24 hours.\n\nOkay, no problem.\n\nIs there anything else I can help you with?\n\nUh, that's all for now. Thanks.\n\nNo problem, Randolph. Thank you for calling Martha's Florist. Have a nice day.\n",
+    "analysisResult": {
+      "type": "default",
+      "overallScore": 4,
+      "analysisDate": "2025-06-09T06:20:28.211Z",
+      "parameters": {
+        "communication_skills": {
+          "score": 7,
+          "summary": "The sales call demonstrates competent order-taking but lacks opportunities for rapport building and upselling.  The agent is clear and professional but could improve on active listening and engagement.",
+          "strengths": [
+            "Clear and concise articulation",
+            "Professional and polite tone",
+            "Efficient order processing",
+            "Accurate information gathering"
+          ],
+          "improvements": [
+            "Limited active listening and engagement",
+            "Missed opportunities for rapport building",
+            "Missed opportunities for upselling",
+            "Could benefit from confirming order details with the customer before finalizing"
+          ],
+          "specific_examples": [
+            "The agent repeatedly confirms information without actively engaging Randolph in conversation. For example, after Randolph provides his address, there’s no follow-up question, such as ‘Is there anything else you’d like to add to your delivery address?’.",
+            "The agent misses an opportunity to upsell by not suggesting vases, chocolates, or a personalized message with the roses.",
+            "The agent mishears the phone number as 409 866 5088 instead of 409 586 5088.  This should be double-checked with the customer. ",
+            "The agent fails to re-emphasize the delivery time frame, highlighting any potential issues. For instance, they could ask, 'So to confirm, you'll receive your roses within 24 hours. Is that timeframe acceptable?'"
+          ],
+          "recommendations": [
+            "Incorporate open-ended questions to encourage customer conversation and build rapport (e.g., 'What is the occasion for these roses?', 'Is there anyone special you're sending these to?').",
+            "Actively listen to the customer's responses and use them to personalize the interaction. Reflect back what the customer has said to demonstrate you're listening.",
+            "Implement upselling techniques by suggesting add-ons or similar products that complement the customer's order. This could increase the average order value.",
+            "Always confirm the customer's order details before finalizing the transaction to minimize errors and ensure customer satisfaction."
+          ]
+        },
+        "product_knowledge": {
+          "score": 4,
+          "summary": "The sales call demonstrates basic order-taking skills but lacks in product knowledge and salesmanship.  The salesperson efficiently gathers customer information but fails to highlight product benefits or address potential customer concerns.",
+          "strengths": [
+            "Efficient order taking",
+            "Accurate recording of customer information"
+          ],
+          "improvements": [
+            "Expand product knowledge (e.g., types of roses, vase options, add-ons)",
+            "Highlight product benefits and features",
+            "Engage in more consultative selling",
+            "Proactively address potential delivery concerns"
+          ],
+          "specific_examples": [
+            "The salesperson doesn't discuss different types of roses or stem lengths beyond a simple 'long stemmed' confirmation.  There's no mention of vase options, delivery time windows, or other add-ons that could increase the order value. The customer asks about delivery time twice, showing a lack of clarity.",
+            "The salesperson doesn't proactively confirm the order details to the customer before finalizing the transaction and didn't build any rapport beyond taking down the order information."
+          ],
+          "recommendations": [
+            "Provide staff with detailed product training, including information on various types of flowers, add-on options, and delivery processes.  Role-play scenarios to practice consultative selling techniques focusing on understanding customer needs and exceeding expectations. Implement a script or checklist to ensure all key information is covered during each call. Consider offering different delivery options and clearly communicate the expected delivery window."
+          ]
+        },
+        "customer_needs_analysis": {
+          "score": 3,
+          "summary": "The salesperson efficiently took the order but failed to engage in any needs-based selling.  The interaction was transactional, lacking any attempt to understand Randolph's needs beyond the basic order request.",
+          "strengths": [
+            "Efficient order taking",
+            "Accurate information gathering"
+          ],
+          "improvements": [
+            "Lack of needs discovery",
+            "Absence of upselling or cross-selling",
+            "Missed opportunity for relationship building"
+          ],
+          "specific_examples": [
+            "No questions were asked about the occasion for the flowers (birthday, anniversary, sympathy, etc.), which could have opened up opportunities for suggesting more appropriate arrangements or add-ons.",
+            "The salesperson didn't inquire about preferences regarding vase type, delivery time specifics, or additional items (e.g., chocolates, cards) that would enhance the customer's experience.",
+            "No attempt was made to personalize the order or build rapport beyond basic pleasantries."
+          ],
+          "recommendations": [
+            "Implement a structured needs-discovery process with open-ended questions to understand the customer's context and intent.",
+            "Train sales staff on suggestive selling techniques to identify upselling and cross-selling opportunities based on the occasion and customer preferences.",
+            "Encourage building rapport and personalizing the interaction to enhance customer experience and loyalty.  This might include offering a loyalty program, special offers, or asking about the recipient of the flowers."
+          ]
+        },
+        "closing_techniques": {
+          "score": 4,
+          "summary": "The sales call efficiently gathered customer information but lacked a strong closing technique, handling of potential objections, and a clear follow-up plan.  The next steps were not defined.",
+          "strengths": [
+            "Efficiently gathered customer information",
+            "Order was processed quickly"
+          ],
+          "improvements": [
+            "Implement a more persuasive closing technique",
+            "Proactively address potential objections (e.g., price, delivery time)",
+            "Clearly define next steps and confirm order details with the customer",
+            "Establish a follow-up plan (e.g., confirmation email, delivery tracking)"
+          ],
+          "specific_examples": [
+            "The salesperson didn't confirm the order details with Randolph before ending the call.  There was no attempt to upsell or suggest add-ons.",
+            "No attempt was made to handle potential objections, such as the price or delivery time. Randolph simply accepted the delivery timeframe without questioning it.",
+            "The closing was abrupt and lacked confirmation or a sense of finality.  There was no thank you for the order and no clear next steps outlined."
+          ],
+          "recommendations": [
+            "Use a closing technique like summarizing the order, reiterating benefits, and explicitly asking for the order confirmation. For example:  'So Randolph, to confirm, that's one dozen long-stemmed red roses to be delivered to 6800 Gladys Avenue, Beaumont, Texas 77706 within 24 hours, for a total of $40.  Is that correct?'",
+            "Before closing, proactively address potential concerns, like 'Does the delivery timeframe of 24 hours work for you?  Is there anything else I can assist you with today to make sure your order is perfect?'",
+            "Implement a system for order confirmation emails that include order details, tracking information (when available), and a thank-you message.  A phone call follow-up the next day would reinforce positive customer experience."
+          ]
+        },
+        "overall_performance": {
+          "score": 4,
+          "summary": "The call successfully took an order, but lacked crucial salesmanship.  The interaction was transactional, missing opportunities for upselling, cross-selling, and building rapport.",
+          "strengths": [
+            "Order accurately taken and processed",
+            "Efficient information gathering"
+          ],
+          "improvements": [
+            "Lack of engagement and rapport building",
+            "Missed opportunities for upselling/cross-selling",
+            "No attempt to understand customer needs beyond the basic order",
+            "Inefficient order confirmation; delivery timeframe wasn't confirmed proactively."
+          ],
+          "specific_examples": [
+            "The representative did not engage Randolph beyond the transactional aspects of the order.  There was no attempt to learn about the occasion or personalize the purchase.",
+            "No attempt to upsell (e.g., suggest a vase, chocolates, or a larger arrangement) or cross-sell (e.g., suggest other flower types).",
+            "The delivery timeframe was only confirmed after Randolph asked again, suggesting poor communication of the order details.",
+            "The spelling of Randolph's name was incorrect, showing a lack of attention to detail."
+          ],
+          "recommendations": [
+            "Implement a structured sales script that includes questions to understand customer needs and occasions (e.g., \"Is this for a birthday? Anniversary? Other special occasion?\").",
+            "Train representatives on upselling and cross-selling techniques to increase average order value.",
+            "Provide training on building rapport and creating a positive customer experience.",
+            "Implement a more proactive order confirmation process that clearly outlines delivery timelines and order details.",
+            "Encourage active listening and confirmation of customer information to prevent errors."
+          ]
+        }
+      }
+    }
+  },
+  {
+    "status": "COMPLETED",
+    "analysisType": "default",
+    "userId": "demo-user-001",
+    "uploadId": "upload_1749449996044_zic0ty6f1",
+    "id": "analysis_1749450371381_o3yimyxu5",
+    "createdAt": "2025-06-09T06:26:11.381Z",
+    "updatedAt": "2025-06-09T06:26:34.553Z",
+    "transcription": "Thank you for calling Martha's Florist. How may I assist you? Hello, I'd like to order flowers and I think you have what I'm looking for. I'd be happy to take care of your order. May I have your name please? Randall Thomas. Randall Thomas. Can you spell that for me? Randall R A N D A L L Thomas T H O M A S. Thank you for that information, Randall. May I have your home or office number? Area code first. Area code 409 then 5 866 5088. That's 409 866 5088. Do you have a fax number or email address? My email is Randall.Thomas@gmail.com. Randall.Thomas@gmail.com. May I have your shipping address? 6800 Okay. Gladys Avenue Beaumont, Texas Zip code is 77706. Gladys Avenue, Beaumont, Texas, zip code 77706. Thank you for the information. What products were you interested in purchasing? Red roses, probably a dozen. One dozen of red roses. Do you want long stems? Yes, sure. All right, Randall. Let me process your order. One moment please. Okay. Randall, you are ordering one dozen long-stemmed red roses. The total amount of your order is $40 and it will be shipped to your address within 24 hours. How soon can you deliver my roses again? Within 24 hours. Okay, no problem. Is there anything else I can help you with? Uh, that's all for now. Thanks. No problem, Randall. Thank you for calling Martha's Florist. Have a nice day.\n",
+    "analysisResult": {
+      "type": "default",
+      "overallScore": 4,
+      "analysisDate": "2025-06-09T06:26:34.553Z",
+      "parameters": {
+        "communication_skills": {
+          "score": 6,
+          "summary": "The sales call demonstrates efficient order-taking but lacks rapport building and proactive salesmanship.  The agent is clear and professional but misses opportunities to enhance the customer experience.",
+          "strengths": [
+            "Clear and concise articulation",
+            "Efficient order taking process",
+            "Professional tone and language"
+          ],
+          "improvements": [
+            "Active listening and engagement with the customer",
+            "Rapport building and personalized service",
+            "Proactive salesmanship and upselling opportunities",
+            "Confirmation of order details before closing"
+          ],
+          "specific_examples": [
+            "The agent efficiently gathers all necessary information. However, there is no attempt to personalize the interaction beyond the basic order fulfillment.",
+            "The agent asks 'Is there anything else I can help you with?', which is a weak attempt at upselling or suggesting add-ons like a vase or chocolates. A more effective approach would involve suggesting these items proactively.",
+            "The agent doesn't explicitly confirm the order details (type of roses, quantity, delivery timeframe) with the customer before closing the call, leaving room for potential misunderstandings.",
+            "The agent missed an opportunity to learn more about the purpose of the flower delivery (birthday, anniversary etc.) which could have allowed for a more personalized experience and potential upsell opportunities."
+          ],
+          "recommendations": [
+            "Implement a script that includes open-ended questions to engage the customer and understand their needs beyond the basic order. For instance, 'These roses are perfect for a special occasion.  Is this for a birthday, anniversary, or something else?',",
+            "Train the sales team on active listening techniques, such as paraphrasing the customer's needs and summarizing the order before closing.",
+            "Introduce suggestive selling techniques to offer add-ons or upgrades that enhance the customer's experience and increase revenue.  For example, 'Many customers also purchase a vase with their roses. Would you like to add one today?',",
+            "Emphasize the importance of confirming all order details with the customer before closing to minimize errors and ensure satisfaction."
+          ]
+        },
+        "product_knowledge": {
+          "score": 4,
+          "summary": "The sales call demonstrates basic order-taking skills but lacks in product knowledge presentation.  The representative efficiently gathers customer information but fails to highlight product features, benefits, or options beyond the customer's initial request.",
+          "strengths": [
+            "Efficient order taking",
+            "Accurate recording of customer information"
+          ],
+          "improvements": [
+            "Expand on product details (e.g., rose type, arrangement options, vase choices)",
+            "Proactively suggest add-ons or upselling opportunities",
+            "Discuss delivery options beyond a simple '24-hour' timeframe"
+          ],
+          "specific_examples": [
+            "The representative didn't discuss different types of red roses or stem lengths beyond a simple 'long-stemmed' descriptor. This limits the customer's understanding of the product and potentially misses opportunities to upsell.",
+            "The representative did not ask clarifying questions about the occasion or any preferences, which could have guided a more tailored product recommendation or add-on sales (e.g., chocolates, a card).",
+            "The statement that delivery is 'within 24 hours' is vague. It would be better to clarify delivery windows or options for specific delivery time slots."
+          ],
+          "recommendations": [
+            "Implement a standardized sales script that includes opportunities to highlight product details and upselling.",
+            "Train representatives on different rose varieties and arrangement options to enhance their product knowledge.",
+            "Provide sales staff with resources (e.g., photos, brochures) to visualize product options for the customer.",
+            "Provide training on active listening and asking clarifying questions to better understand customer needs."
+          ]
+        },
+        "customer_needs_analysis": {
+          "score": 3,
+          "summary": "The salesperson efficiently took the order but failed to engage in any needs discovery or relationship building.  The interaction was purely transactional.",
+          "strengths": [
+            "Order accuracy",
+            "Efficient order taking"
+          ],
+          "improvements": [
+            "Lack of needs discovery",
+            "No attempt to upsell or cross-sell",
+            "No personalization",
+            "No handling of potential objections"
+          ],
+          "specific_examples": [
+            "The salesperson asked only about the product ('What products were you interested in purchasing?') and delivery without exploring the reason for the purchase, occasion, budget, or preferences.",
+            "No questions were asked about desired arrangement style, vase preferences, add-ons (e.g., chocolates, balloons), or delivery time flexibility."
+          ],
+          "recommendations": [
+            "Implement a structured needs discovery process using open-ended questions.  For example, 'What is the occasion for the flowers?' or 'Who are the flowers for?' or 'What is your budget for this order?'",
+            "Train salespeople on upselling and cross-selling techniques.  This could involve suggesting alternative arrangements, add-on products, or different flower types based on the customer's initial request.",
+            "Encourage building rapport and personalizing the interaction.  Even a simple, 'Is there anything specific about the arrangement you’d like to make it extra special?' can improve the experience.",
+            "Develop scripts to anticipate and address common objections. For example, prepare responses to price concerns or questions about delivery timing."
+          ]
+        },
+        "closing_techniques": {
+          "score": 4,
+          "summary": "The sales call efficiently gathers customer information but lacks a proper sales closing and follow-up strategy.  The opportunity to upsell or suggest add-ons was missed, and no confirmation or next steps were established.",
+          "strengths": [
+            "Efficient order taking",
+            "Clear communication"
+          ],
+          "improvements": [
+            "Implement a structured closing technique",
+            "Address potential objections proactively",
+            "Suggest add-on products/services",
+            "Confirm order details and delivery expectations",
+            "Establish a follow-up plan",
+            "Obtain customer feedback"
+          ],
+          "specific_examples": [
+            "The salesperson simply stated the price and delivery time without confirming the customer's agreement or addressing potential concerns about the cost or delivery method.  There was no attempt to build rapport or further engage the customer. For example, asking 'Does that delivery time work for you?' could have made the interaction more effective.",
+            "No attempt was made to upsell (e.g., suggesting a vase, chocolates, or a personalized message).",
+            "The salesperson didn't confirm the order summary with the customer before ending the call.  This leaves room for misunderstanding or errors."
+          ],
+          "recommendations": [
+            "Train the salesperson on effective closing techniques (e.g., the summary close, the assumptive close, or the question close).",
+            "Develop a script that includes upselling opportunities and handling common objections.",
+            "Implement an order confirmation process that includes email or text message confirmation with order details and tracking information.",
+            "Establish a customer feedback mechanism to gauge customer satisfaction and identify areas for improvement."
+          ]
+        },
+        "overall_performance": {
+          "score": 4,
+          "summary": "This sales call was purely transactional, lacking any attempt at upselling, relationship building, or even confirming the customer's needs beyond the basic order.  While the order was successfully taken, the opportunity for increased revenue and customer loyalty was missed.",
+          "strengths": [
+            "Efficient order taking",
+            "Clear and concise communication"
+          ],
+          "improvements": [
+            "Lack of needs assessment and upselling",
+            "Missed opportunity for relationship building",
+            "Absence of order confirmation and delivery details",
+            "No attempt to gather customer preferences or feedback"
+          ],
+          "specific_examples": [
+            "The salesperson didn't inquire about the occasion for the flowers or the recipient's preferences, thus missing opportunities to suggest add-ons like chocolates, vases, or different types of arrangements.",
+            "The delivery time was stated as 'within 24 hours,' but no specific time window was provided, nor was there any confirmation of delivery date/time with the customer.",
+            "The call ended abruptly without a friendly closing or an invitation for future orders."
+          ],
+          "recommendations": [
+            "Implement a structured sales script that includes needs assessment questions (e.g., 'What is the occasion?', 'Who is this for?', 'Do you have any preferences for the arrangement?').",
+            "Train sales staff on upselling and cross-selling techniques.  This includes suggesting add-on products and premium options.",
+            "Confirm the order details with the customer, including delivery time window and contact details, to avoid misunderstandings.",
+            "Gather customer feedback to improve future service.  A simple question like, 'Is there anything else I can help you with today?' or 'How did you hear about us?' can build rapport.",
+            "Develop a more engaging and personalized closing statement that includes expressing gratitude and encouraging repeat business.",
+            "Consider adding a customer relationship management (CRM) system to track customer interactions, preferences, and order history for better personalization and targeted marketing in the future."
+          ]
+        }
+      }
+    }
+  },
+  {
+    "status": "FAILED",
+    "analysisType": "default",
+    "userId": "demo-user-001",
+    "uploadId": "upload_1749449996044_zic0ty6f1",
+    "id": "analysis_1749451157184_dupcz0mp0",
+    "createdAt": "2025-06-09T06:39:17.184Z",
+    "updatedAt": "2025-06-09T06:39:17.238Z",
+    "errorMessage": "ENOENT: no such file or directory, open 'uploads/Sample_Order_Taking_Customer_Support_Philippines_1749449996040_j7zl3r.mp3'"
+  },
+  {
+    "status": "FAILED",
+    "analysisType": "default",
+    "userId": "demo-user-001",
+    "uploadId": "upload_1749450364233_lkswi2mja",
+    "id": "analysis_1749451214999_7fgnaid3t",
+    "createdAt": "2025-06-09T06:40:14.999Z",
+    "updatedAt": "2025-06-09T06:40:15.015Z",
+    "errorMessage": "ENOENT: no such file or directory, open 'uploads/Sample_Order_Taking_Customer_Support_Philippines_1749450364228_pkw1ja.mp3'"
+  },
+  {
+    "status": "FAILED",
+    "analysisType": "default",
+    "userId": "demo-user-001",
+    "uploadId": "upload_1749450364233_lkswi2mja",
+    "id": "analysis_1749451228619_161px1b8p",
+    "createdAt": "2025-06-09T06:40:28.619Z",
+    "updatedAt": "2025-06-09T06:40:28.629Z",
+    "errorMessage": "ENOENT: no such file or directory, open 'uploads/Sample_Order_Taking_Customer_Support_Philippines_1749450364228_pkw1ja.mp3'"
+  }
+]

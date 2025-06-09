@@ -1,0 +1,277 @@
+{
+  "info": {
+    "name": "Sales Analyzer API",
+    "description": "API collection for testing the Sales Performance Analyzer application",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "demo-user-001",
+      "type": "string"
+    },
+    {
+      "key": "uploadId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "analysisId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Upload Audio Files",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "files",
+              "type": "file",
+              "src": "",
+              "description": "Audio file to upload (MP3, WAV, M4A, etc.)"
+            },
+            {
+              "key": "files",
+              "type": "file",
+              "src": "",
+              "description": "Additional audio file (optional)"
+            },
+            {
+              "key": "userId",
+              "value": "{{userId}}",
+              "type": "text",
+              "description": "User identifier"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/upload",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "upload"]
+        },
+        "description": "Upload one or more audio files for analysis. Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WebM. Max file size: 50MB per file."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response has success property', function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.success).to.eql(true);",
+              "});",
+              "",
+              "pm.test('Response contains upload results', function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.results).to.be.an('array');",
+              "    if (jsonData.results.length > 0) {",
+              "        pm.globals.set('uploadId', jsonData.results[0].id);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Uploaded Files",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/upload?userId={{userId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "upload"],
+          "query": [
+            {
+              "key": "userId",
+              "value": "{{userId}}",
+              "description": "User identifier"
+            }
+          ]
+        },
+        "description": "Retrieve all uploaded files for a specific user, including analysis status."
+      }
+    },
+    {
+      "name": "Start Default Analysis",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"uploadIds\": [\"{{uploadId}}\"],\n  \"analysisType\": \"default\",\n  \"userId\": \"{{userId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/analyze",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "analyze"]
+        },
+        "description": "Start analysis using the default sales performance framework. This will analyze communication skills, product knowledge, customer needs analysis, closing techniques, and overall performance."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Analysis started successfully', function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.success).to.eql(true);",
+              "    if (jsonData.results.length > 0) {",
+              "        pm.globals.set('analysisId', jsonData.results[0].analysisId);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start Custom Analysis",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"uploadIds\": [\"{{uploadId}}\"],\n  \"analysisType\": \"custom\",\n  \"customPrompt\": \"Analyze this sales call focusing specifically on: 1) How well the salesperson handled customer objections, 2) The quality of questions asked to understand customer needs, 3) The effectiveness of the closing technique used, 4) Overall professionalism and rapport building. Provide specific examples and actionable recommendations for improvement.\",\n  \"userId\": \"{{userId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/analyze",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "analyze"]
+        },
+        "description": "Start analysis using custom instructions. You can define specific criteria and focus areas for the analysis."
+      }
+    },
+    {
+      "name": "Get All Analysis Results",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/analyze?userId={{userId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "analyze"],
+          "query": [
+            {
+              "key": "userId",
+              "value": "{{userId}}",
+              "description": "User identifier"
+            }
+          ]
+        },
+        "description": "Get all analysis results for a user. This will show both completed and in-progress analyses."
+      }
+    },
+    {
+      "name": "Get Specific Analysis Result",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/analyze?userId={{userId}}&analysisId={{analysisId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "analyze"],
+          "query": [
+            {
+              "key": "userId",
+              "value": "{{userId}}",
+              "description": "User identifier"
+            },
+            {
+              "key": "analysisId",
+              "value": "{{analysisId}}",
+              "description": "Specific analysis ID to retrieve"
+            }
+          ]
+        },
+        "description": "Get results for a specific analysis by its ID."
+      }
+    },
+    {
+      "name": "Get Analysis by Upload ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/analyze?userId={{userId}}&uploadId={{uploadId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "analyze"],
+          "query": [
+            {
+              "key": "userId",
+              "value": "{{userId}}",
+              "description": "User identifier"
+            },
+            {
+              "key": "uploadId",
+              "value": "{{uploadId}}",
+              "description": "Upload ID to get analyses for"
+            }
+          ]
+        },
+        "description": "Get all analysis results for a specific uploaded file."
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.globals.set('timestamp', Date.now());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Response time is less than 30 seconds', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(30000);",
+          "});"
+        ]
+      }
+    }
+  ]
+}

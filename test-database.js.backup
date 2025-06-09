@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+
+const { PrismaClient } = require('./src/generated/prisma');
+
+async function testDatabase() {
+  console.log('🔍 Testing Database Connection...\n');
+  
+  const prisma = new PrismaClient();
+  
+  try {
+    // Test basic connection
+    console.log('📡 Testing basic connection...');
+    await prisma.$connect();
+    console.log('✅ Database connection successful');
+    
+    // Test table creation by checking if we can query users
+    console.log('\n📊 Testing table structure...');
+    
+    // Check if we can count users (this will verify the table exists)
+    const userCount = await prisma.user.count();
+    console.log(`✅ Users table exists (${userCount} users)`);
+    
+    // Check if we can count uploads
+    const uploadCount = await prisma.upload.count();
+    console.log(`✅ Uploads table exists (${uploadCount} uploads)`);
+    
+    // Check if we can count analyses
+    const analysisCount = await prisma.analysis.count();
+    console.log(`✅ Analyses table exists (${analysisCount} analyses)`);
+    
+    // Check if we can count analysis parameters
+    const paramCount = await prisma.analysisParameter.count();
+    console.log(`✅ AnalysisParameters table exists (${paramCount} parameters)`);
+    
+    console.log('\n🎉 Database is fully operational!');
+    console.log('✨ You can now start uploading files and running analyses.');
+    
+  } catch (error) {
+    console.error('❌ Database test failed:', error.message);
+    console.log('\n🔧 Troubleshooting:');
+    console.log('1. Check your DATABASE_URL in .env file');
+    console.log('2. Ensure your PostgreSQL database is running');
+    console.log('3. Run "npx prisma db push" if tables are missing');
+    console.log('4. Check network connectivity to your database');
+    
+    return false;
+  } finally {
+    await prisma.$disconnect();
+  }
+  
+  return true;
+}
+
+// Run the test
+testDatabase()
+  .then(success => {
+    if (success) {
+      console.log('\n🚀 Ready to start the application with "npm run dev"');
+    }
+    process.exit(success ? 0 : 1);
+  })
+  .catch(error => {
+    console.error('❌ Unexpected error:', error);
+    process.exit(1);
+  });

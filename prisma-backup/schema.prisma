@@ -1,0 +1,92 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and user management
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  uploads   Upload[]
+  analyses  Analysis[]
+  
+  @@map("users")
+}
+
+// Upload model for storing uploaded audio files
+model Upload {
+  id           String   @id @default(cuid())
+  filename     String
+  originalName String
+  fileSize     Int
+  mimeType     String
+  fileUrl      String
+  uploadedAt   DateTime @default(now())
+  
+  // Foreign keys
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  analyses     Analysis[]
+  
+  @@map("uploads")
+}
+
+// Analysis model for storing analysis results
+model Analysis {
+  id              String   @id @default(cuid())
+  status          AnalysisStatus @default(PENDING)
+  analysisType    String   // "default" or "custom"
+  customPrompt    String?  // Custom analysis instructions
+  transcription   String?  // Audio transcription
+  analysisResult  Json?    // JSON result from Gemini API
+  errorMessage    String?  // Error message if analysis failed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Foreign keys
+  userId          String
+  uploadId        String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  upload          Upload   @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  
+  @@map("analyses")
+}
+
+// Analysis parameters model for storing default and custom analysis criteria
+model AnalysisParameter {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  prompt      String   // The prompt template for this parameter
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("analysis_parameters")
+}
+
+enum AnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}

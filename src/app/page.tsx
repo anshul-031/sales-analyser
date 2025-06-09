@@ -1,102 +1,330 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { BarChart3, Upload, Settings, FileText, User, Zap } from 'lucide-react';
+import FileUpload from '@/components/FileUpload';
+import AnalysisConfig from '@/components/AnalysisConfig';
+import AnalysisResults from '@/components/AnalysisResults';
+import { Logger } from '@/lib/utils';
+
+// Simulate user authentication for demo purposes
+const DEMO_USER_ID = 'demo-user-001';
+
+enum AppStep {
+  UPLOAD = 'upload',
+  CONFIGURE = 'configure',
+  RESULTS = 'results'
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.UPLOAD);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; originalName: string; uploadedAt: string; [key: string]: unknown }>>([]);
+  const [analysisIds, setAnalysisIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Load uploaded files on component mount
+  useEffect(() => {
+    loadUploadedFiles();
+  }, []);
+
+  const loadUploadedFiles = async () => {
+    try {
+      Logger.info('[HomePage] Loading uploaded files for user:', DEMO_USER_ID);
+      setLoading(true);
+      
+      const response = await fetch(`/api/upload?userId=${DEMO_USER_ID}`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setUploadedFiles(result.uploads || []);
+        Logger.info('[HomePage] Loaded', result.uploads?.length || 0, 'uploaded files');
+      } else {
+        console.error('[HomePage] Failed to load uploads:', result.error);
+      }
+    } catch (error) {
+      console.error('[HomePage] Error loading uploads:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUploadComplete = (response: unknown) => {
+    Logger.info('[HomePage] Upload completed:', response);
+    
+    // Type guard for response
+    const uploadResponse = response as {
+      analysisStarted?: boolean;
+      analyses?: Array<{ id: string }>;
+      results?: Array<{
+        success: boolean;
+        id?: string;
+        originalName?: string;
+        uploadedAt?: string;
+        [key: string]: unknown
+      }>;
+    };
+    
+    // If analysis was auto-started, extract the analysis IDs and go to results
+    if (uploadResponse.analysisStarted && uploadResponse.analyses) {
+      const newAnalysisIds = uploadResponse.analyses.map((a) => a.id);
+      Logger.info('[HomePage] Auto-analysis started, going to results with', newAnalysisIds.length, 'analyses');
+      setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
+      setCurrentStep(AppStep.RESULTS);
+    } else if (uploadResponse.results) {
+      // Fallback: just update uploaded files and go to configure
+      const successfulFiles = uploadResponse.results.filter((r) => r.success && r.id && r.originalName && r.uploadedAt);
+      const newFiles = successfulFiles as Array<{ id: string; originalName: string; uploadedAt: string; [key: string]: unknown }>;
+      setUploadedFiles(prev => [...newFiles, ...prev]);
+      if (newFiles.length > 0) {
+        setCurrentStep(AppStep.CONFIGURE);
+      }
+    }
+    
+    // Reload uploaded files to get the latest state
+    loadUploadedFiles();
+  };
+
+  const handleAnalysisStart = (newAnalysisIds: string[]) => {
+    Logger.info('[HomePage] Analysis started for', newAnalysisIds.length, 'files');
+    setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
+    setCurrentStep(AppStep.RESULTS);
+  };
+
+  const getStepStatus = (step: AppStep) => {
+    if (step === currentStep) return 'current';
+    
+    switch (step) {
+      case AppStep.UPLOAD:
+        return uploadedFiles.length > 0 ? 'completed' : 'pending';
+      case AppStep.CONFIGURE:
+        return analysisIds.length > 0 ? 'completed' : uploadedFiles.length > 0 ? 'available' : 'pending';
+      case AppStep.RESULTS:
+        return analysisIds.length > 0 ? 'available' : 'pending';
+      default:
+        return 'pending';
+    }
+  };
+
+  const getStepClasses = (step: AppStep) => {
+    const status = getStepStatus(step);
+    const isClickable = status === 'completed' || status === 'available' || status === 'current';
+    
+    let classes = 'flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ';
+    
+    if (status === 'current') {
+      classes += 'bg-blue-600 text-white shadow-lg';
+    } else if (status === 'completed') {
+      classes += 'bg-green-100 text-green-800 hover:bg-green-200';
+    } else if (status === 'available') {
+      classes += 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+    } else {
+      classes += 'bg-gray-50 text-gray-400';
+    }
+    
+    if (isClickable) {
+      classes += ' cursor-pointer';
+    } else {
+      classes += ' cursor-not-allowed';
+    }
+    
+    return classes;
+  };
+
+  const handleStepClick = (step: AppStep) => {
+    const status = getStepStatus(step);
+    if (status === 'completed' || status === 'available' || status === 'current') {
+      setCurrentStep(step);
+    }
+  };
+
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case AppStep.UPLOAD:
+        return (
+          <FileUpload
+            onUploadComplete={handleUploadComplete}
+            userId={DEMO_USER_ID}
+            maxFiles={10}
+            maxFileSize={50 * 1024 * 1024}
+          />
+        );
+      
+      case AppStep.CONFIGURE:
+        return (
+          <AnalysisConfig
+            uploadedFiles={uploadedFiles}
+            userId={DEMO_USER_ID}
+            onAnalysisStart={handleAnalysisStart}
+          />
+        );
+      
+      case AppStep.RESULTS:
+        return (
+          <AnalysisResults
+            userId={DEMO_USER_ID}
+            analysisIds={analysisIds}
+            onRefresh={loadUploadedFiles}
+          />
+        );
+      
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded-lg">
+                <BarChart3 className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">Sales Performance Analyzer</h1>
+                <p className="text-sm text-gray-500">AI-powered sales call analysis</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <User className="w-4 h-4" />
+                <span>Demo User</span>
+              </div>
+            </div>
+          </div>
         </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Process Steps */}
+        <div className="mb-8">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+            <button
+              onClick={() => handleStepClick(AppStep.UPLOAD)}
+              className={getStepClasses(AppStep.UPLOAD)}
+            >
+              <Upload className="w-5 h-5" />
+              <div className="text-left">
+                <div className="font-medium">Upload Files</div>
+                <div className="text-xs opacity-75">
+                  {uploadedFiles.length > 0 ? `${uploadedFiles.length} files uploaded` : 'Upload audio recordings'}
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleStepClick(AppStep.CONFIGURE)}
+              className={getStepClasses(AppStep.CONFIGURE)}
+            >
+              <Settings className="w-5 h-5" />
+              <div className="text-left">
+                <div className="font-medium">Configure Analysis</div>
+                <div className="text-xs opacity-75">
+                  {analysisIds.length > 0 ? 'Analysis configured' : 'Set analysis parameters'}
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleStepClick(AppStep.RESULTS)}
+              className={getStepClasses(AppStep.RESULTS)}
+            >
+              <FileText className="w-5 h-5" />
+              <div className="text-left">
+                <div className="font-medium">View Results</div>
+                <div className="text-xs opacity-75">
+                  {analysisIds.length > 0 ? `${analysisIds.length} analyses` : 'Analysis results'}
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Step Content */}
+        <div className="mb-8">
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-2 text-gray-600">Loading...</span>
+            </div>
+          ) : (
+            renderStepContent()
+          )}
+        </div>
+
+        {/* Features Section */}
+        {currentStep === AppStep.UPLOAD && uploadedFiles.length === 0 && (
+          <div className="mt-12">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                Powerful Sales Call Analysis Features
+              </h2>
+              <p className="text-gray-600 max-w-2xl mx-auto">
+                Upload your sales call recordings and get detailed AI-powered insights to improve your team&apos;s performance
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="text-center p-6 bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <Zap className="w-6 h-6 text-blue-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 mb-2">AI Transcription</h3>
+                <p className="text-sm text-gray-600">
+                  Automatic speech-to-text conversion with high accuracy using Google Gemini
+                </p>
+              </div>
+
+              <div className="text-center p-6 bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <BarChart3 className="w-6 h-6 text-green-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 mb-2">Performance Scoring</h3>
+                <p className="text-sm text-gray-600">
+                  Comprehensive scoring across multiple sales performance criteria
+                </p>
+              </div>
+
+              <div className="text-center p-6 bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <Settings className="w-6 h-6 text-purple-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 mb-2">Custom Analysis</h3>
+                <p className="text-sm text-gray-600">
+                  Define your own analysis criteria or use our proven framework
+                </p>
+              </div>
+
+              <div className="text-center p-6 bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <FileText className="w-6 h-6 text-orange-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 mb-2">Detailed Reports</h3>
+                <p className="text-sm text-gray-600">
+                  Get actionable insights with strengths, improvements, and recommendations
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+      {/* Footer */}
+      <footer className="bg-gray-50 border-t border-gray-200 mt-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center text-gray-600">
+            <p className="text-sm">
+              Sales Performance Analyzer - Powered by Google Gemini AI
+            </p>
+            <p className="text-xs mt-2">
+              Upload audio files, configure analysis parameters, and get detailed insights to improve sales performance
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
   );

@@ -1,36 +1,412 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sales Performance Analyzer
 
-## Getting Started
+A modern AI-powered sales call analysis application built with Next.js and Google Gemini AI. Analyze sales calls to improve performance with detailed insights and actionable recommendations.
 
-First, run the development server:
+## ✨ Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **🎯 AI-Powered Analysis**: Google Gemini integration for transcription and intelligent analysis
+- **📊 Comprehensive Framework**: 5-area sales performance evaluation
+- **🎨 Custom Analysis**: User-defined analysis criteria and prompts
+- **💾 File-Based Storage**: No database required - works out of the box
+- **📱 Modern UI**: Responsive design with real-time updates
+- **🔄 Background Processing**: Non-blocking analysis with live status updates
+- **📥 Export Functionality**: Download detailed analysis reports
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js 18+ 
+- Google Gemini API key ([Get one here](https://aistudio.google.com/app/apikey))
+
+### Installation
+
+1. **Clone and Install**
+   ```bash
+   git clone <repository-url>
+   cd sales-analyser
+   npm install
+   ```
+
+2. **Configure Environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your Google Gemini API key
+   ```
+
+3. **Start Development Server**
+   ```bash
+   npm run dev
+   ```
+
+4. **Open Application**
+   ```
+   http://localhost:3000
+   ```
+
+## 🔧 Environment Configuration
+
+Create a `.env` file with the following variables:
+
+```env
+# Required: Google Gemini AI Configuration
+GOOGLE_GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optional: Application Configuration
+NEXTAUTH_SECRET=your-nextauth-secret-here
+MAX_FILE_SIZE=52428800
+UPLOAD_DIR=./uploads
+
+# File Management
+AUTO_DELETE_FILES=true
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Getting Your Gemini API Key
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Sign in with your Google account
+3. Create a new API key
+4. Copy the key to your `.env` file
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📁 File-Based Storage System
 
-## Learn More
+This application uses a **zero-dependency file-based storage system**:
 
-To learn more about Next.js, take a look at the following resources:
+```
+sales-analyser/
+├── data/
+│   ├── uploads.json     # File metadata
+│   └── analyses.json    # Analysis results
+├── uploads/             # Audio files
+└── ...
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Benefits
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- ✅ **No Database Required**: Works immediately without setup
+- ✅ **Zero External Dependencies**: No PostgreSQL, MongoDB, etc.
+- ✅ **Portable**: Easy backup and migration
+- ✅ **Transparent**: Human-readable JSON storage
+- ✅ **Fast**: Quick setup and operation
 
-## Deploy on Vercel
+## 🎯 How to Use
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 1. Upload Audio Files
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Supported Formats**: MP3, WAV, M4A, AAC, OGG, FLAC, WebM
+- **File Size Limit**: 50MB per file
+- **Upload Method**: Drag & drop or click to select
+
+### 2. Choose Analysis Type
+
+**Default Analysis** (Recommended)
+- Communication Skills
+- Product Knowledge  
+- Customer Needs Analysis
+- Closing Techniques
+- Overall Performance
+
+**Custom Analysis**
+- Define your own analysis criteria
+- Tailored insights for specific needs
+
+### 3. View Results
+
+- **Real-time Updates**: Watch analysis progress
+- **Detailed Insights**: Scores, strengths, improvements
+- **Actionable Recommendations**: Specific steps for improvement
+- **Full Transcription**: Complete call transcript
+- **Export Options**: Download as JSON
+
+## 📊 Analysis Framework
+
+### Default Analysis Areas
+
+1. **Communication Skills** (1-10 score)
+   - Clarity and articulation
+   - Active listening skills
+   - Professional tone
+   - Rapport building
+
+2. **Product Knowledge** (1-10 score)
+   - Accuracy of information
+   - Confidence in presentation
+   - Technical detail handling
+   - Question answering
+
+3. **Customer Needs Analysis** (1-10 score)
+   - Discovery questions
+   - Pain point identification
+   - Solution alignment
+   - Personalization
+
+4. **Closing Techniques** (1-10 score)
+   - Natural progression
+   - Objection handling
+   - Next steps clarity
+   - Follow-up planning
+
+5. **Overall Performance** (1-10 score)
+   - Call structure
+   - Objective achievement
+   - Customer engagement
+   - Professionalism
+
+### Analysis Output
+
+Each analysis provides:
+- **Numerical Score** (1-10 for each area)
+- **Summary** of performance
+- **Strengths** with specific examples
+- **Areas for Improvement** with actionable feedback
+- **Recommendations** for skill development
+- **Specific Examples** from the actual call
+
+## 🗂️ File Management
+
+### Automatic File Cleanup
+
+The application can automatically delete uploaded audio files after successful analysis to save disk space:
+
+**Configuration:**
+```env
+AUTO_DELETE_FILES=true  # Enable automatic cleanup (default: true)
+AUTO_DELETE_FILES=false # Keep files after analysis
+```
+
+**Behavior:**
+- ✅ **Auto-cleanup ON**: Files deleted immediately after successful analysis
+- 🔄 **Auto-cleanup OFF**: Files preserved for future reference
+- 📊 **Analysis preserved**: Analysis results always kept regardless of setting
+- 🔐 **Transcription preserved**: Full transcription always available in results
+
+### Manual File Management
+
+**Get cleanup status:**
+```bash
+GET /api/cleanup?userId=user_123
+```
+
+**Delete specific file:**
+```bash
+DELETE /api/cleanup?uploadId=upload_123&userId=user_123
+```
+
+**Cleanup all completed analysis files:**
+```bash
+DELETE /api/cleanup?userId=user_123
+```
+
+### Storage Space Optimization
+
+**Automatic (Recommended):**
+- Set `AUTO_DELETE_FILES=true` in `.env`
+- Files deleted after successful analysis
+- Zero maintenance required
+
+**Manual Control:**
+- Set `AUTO_DELETE_FILES=false` in `.env`
+- Use cleanup API endpoints when needed
+- Full control over file retention
+
+## 🔗 API Endpoints
+
+### Upload Files
+```bash
+POST /api/upload
+Content-Type: multipart/form-data
+
+# Form fields:
+# - files: audio file(s)
+# - userId: user identifier
+```
+
+### Start Analysis
+```bash
+POST /api/analyze
+Content-Type: application/json
+
+{
+  "uploadIds": ["upload_123"],
+  "analysisType": "default",
+  "userId": "user_123"
+}
+```
+
+### Get Results
+```bash
+GET /api/analyze?userId=user_123
+GET /api/analyze?analysisId=analysis_123
+GET /api/upload?userId=user_123
+```
+
+### File Cleanup
+```bash
+GET /api/cleanup?userId=user_123                              # Get cleanup status
+DELETE /api/cleanup?uploadId=upload_123&userId=user_123       # Delete specific file
+DELETE /api/cleanup?userId=user_123                           # Cleanup all completed
+```
+
+## 🧪 Testing
+
+### Verify Setup
+```bash
+node test-setup.js
+```
+
+### Test File Storage
+```bash
+node test-file-system.js
+```
+
+### API Testing
+Import `postman/Sales_Analyzer_API.postman_collection.json` into Postman for complete API testing.
+
+## 🏗️ Architecture
+
+### Tech Stack
+- **Frontend**: Next.js 15.3.3, React 19, TypeScript
+- **Styling**: Tailwind CSS 4
+- **AI Integration**: Google Gemini 1.5 Flash
+- **Storage**: File-based JSON storage
+- **Icons**: Lucide React
+- **File Upload**: React Dropzone
+
+### Project Structure
+```
+src/
+├── app/
+│   ├── page.tsx                 # Main application UI
+│   └── api/
+│       ├── upload/route.ts      # File upload endpoint
+│       └── analyze/route.ts     # Analysis endpoint
+├── components/
+│   ├── FileUpload.tsx           # Drag & drop file upload
+│   ├── AnalysisConfig.tsx       # Analysis configuration
+│   └── AnalysisResults.tsx      # Results display
+└── lib/
+    ├── file-storage.ts          # File-based data storage
+    ├── gemini.ts                # AI service integration
+    └── utils.ts                 # Utility functions
+```
+
+## 🔧 Development
+
+### Available Scripts
+
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run start        # Start production server
+npm run lint         # Run ESLint
+```
+
+### Code Quality
+
+- **TypeScript**: Full type safety
+- **ESLint**: Code linting and formatting
+- **Error Handling**: Comprehensive error management
+- **Logging**: Detailed operation logging
+
+## 📚 Advanced Usage
+
+### Custom Analysis Prompts
+
+Create tailored analysis by providing custom prompts:
+
+```javascript
+{
+  "analysisType": "custom",
+  "customPrompt": "Analyze this sales call focusing on objection handling and closing techniques. Provide specific recommendations for improvement."
+}
+```
+
+### Batch Processing
+
+Upload and analyze multiple files simultaneously:
+
+```javascript
+{
+  "uploadIds": ["upload_1", "upload_2", "upload_3"],
+  "analysisType": "default",
+  "userId": "user_123"
+}
+```
+
+### Export and Backup
+
+- **Analysis Export**: Download complete analysis as JSON
+- **Data Backup**: Copy `data/` and `uploads/` directories
+- **Migration**: Move JSON files between environments
+
+## 🔒 Security Considerations
+
+- **File Validation**: Strict file type and size validation
+- **Input Sanitization**: All inputs sanitized and validated
+- **API Key Security**: Environment variable protection
+- **File Access**: Controlled file system access
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**File Upload Fails**
+- Check file size (max 50MB)
+- Verify supported format (MP3, WAV, etc.)
+- Ensure upload directory permissions
+
+**Analysis Doesn't Start**
+- Verify Google Gemini API key
+- Check internet connection
+- Review API quota limits
+
+**Missing Files or Directories**
+```bash
+mkdir -p data uploads
+chmod 755 data uploads
+```
+
+**Environment Issues**
+```bash
+node test-setup.js  # Verify configuration
+```
+
+### Getting Help
+
+1. **Check Documentation**: Review this README and FILE_STORAGE_README.md
+2. **Run Tests**: Use verification scripts
+3. **Check Logs**: Review console output for detailed errors
+4. **API Testing**: Use Postman collection for debugging
+
+## 📋 Roadmap
+
+- [ ] Multi-language support
+- [ ] Advanced analytics dashboard
+- [ ] Team collaboration features
+- [ ] Performance trend analysis
+- [ ] Integration with CRM systems
+- [ ] Custom scoring frameworks
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+For support and questions:
+- Review the documentation
+- Check the troubleshooting guide
+- Run verification scripts
+- Check console logs for detailed error information
+
+---
+
+**Sales Performance Analyzer** - Transform your sales calls into actionable insights with AI-powered analysis.
