@@ -7,6 +7,7 @@ A modern AI-powered sales call analysis application built with Next.js and Googl
 - **🎯 AI-Powered Analysis**: Google Gemini integration for transcription and intelligent analysis
 - **📊 Comprehensive Framework**: 5-area sales performance evaluation
 - **🎨 Custom Analysis**: User-defined analysis criteria and prompts
+- **🤖 AI Chat Assistant**: Interactive chatbot to ask questions about your call recordings
 - **💾 File-Based Storage**: No database required - works out of the box
 - **📱 Modern UI**: Responsive design with real-time updates
 - **🔄 Background Processing**: Non-blocking analysis with live status updates
@@ -164,6 +165,20 @@ sales-analyser/
 - **Actionable Recommendations**: Specific steps for improvement
 - **Full Transcription**: Complete call transcript
 - **Export Options**: Download as JSON
+
+### 4. Use AI Chat Assistant
+
+- **Interactive Q&A**: Ask questions about your call recordings
+- **Contextual Insights**: Get specific answers based on transcription and analysis
+- **Smart Recommendations**: Receive personalized improvement suggestions
+- **Multi-Call Analysis**: Compare and analyze across multiple recordings
+
+**Example Questions:**
+- "What were my main strengths in this call?"
+- "How can I improve my closing techniques?"
+- "What objections did the customer raise?"
+- "Compare my performance across all calls"
+- "Give me specific examples of good communication"
 
 ## 📊 Analysis Framework
 

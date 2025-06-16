@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Upload, Settings, FileText, User, Zap } from 'lucide-react';
+import { BarChart3, Upload, Settings, FileText, User, Zap, MessageCircle } from 'lucide-react';
 import FileUpload from '@/components/FileUpload';
 import AnalysisConfig from '@/components/AnalysisConfig';
 import AnalysisResults from '@/components/AnalysisResults';
+import Chatbot from '@/components/Chatbot';
 import { Logger } from '@/lib/utils';
 
 // Simulate user authentication for demo purposes
@@ -21,6 +22,7 @@ export default function Home() {
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; originalName: string; uploadedAt: string; [key: string]: unknown }>>([]);
   const [analysisIds, setAnalysisIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showChatbot, setShowChatbot] = useState(false);
 
   // Load uploaded files on component mount
   useEffect(() => {
@@ -172,8 +174,20 @@ export default function Home() {
     }
   };
 
+  const shouldShowChatbot = () => {
+    // Show chatbot only if there are completed analyses
+    return analysisIds.length > 0 || uploadedFiles.length > 0;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Chatbot */}
+      {showChatbot && (
+        <Chatbot
+          userId={DEMO_USER_ID}
+          onClose={() => setShowChatbot(false)}
+        />
+      )}
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -256,6 +270,22 @@ export default function Home() {
           )}
         </div>
 
+        {/* Chatbot Toggle Button */}
+        {shouldShowChatbot() && !showChatbot && (
+          <div className="fixed bottom-4 right-4 z-40">
+            <button
+              onClick={() => setShowChatbot(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-colors group"
+              title="Open AI Assistant"
+            >
+              <MessageCircle className="w-6 h-6" />
+              <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                AI
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* Features Section */}
         {currentStep === AppStep.UPLOAD && uploadedFiles.length === 0 && (
           <div className="mt-12">
@@ -268,7 +298,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
               <div className="text-center p-6 bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                   <Zap className="w-6 h-6 text-blue-600" />
@@ -306,6 +336,16 @@ export default function Home() {
                 <h3 className="font-semibold text-gray-900 mb-2">Detailed Reports</h3>
                 <p className="text-sm text-gray-600">
                   Get actionable insights with strengths, improvements, and recommendations
+                </p>
+              </div>
+
+              <div className="text-center p-6 bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                  <MessageCircle className="w-6 h-6 text-purple-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 mb-2">AI Chat Assistant</h3>
+                <p className="text-sm text-gray-600">
+                  Ask questions about your call recordings and get personalized insights
                 </p>
               </div>
             </div>

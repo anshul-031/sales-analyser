@@ -250,6 +250,92 @@
         },
         "description": "Get all analysis results for a specific uploaded file."
       }
+    },
+    {
+      "name": "Chatbot - Ask Question",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"question\": \"What were my main strengths in the sales calls?\",\n  \"analysisId\": \"{{analysisId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/chatbot",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "chatbot"]
+        },
+        "description": "Ask the AI chatbot a question about analysis results. Can be scoped to specific analysis or all user data."
+      }
+    },
+    {
+      "name": "Chatbot - Ask About Specific Upload",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"question\": \"How did I handle objections in this call?\",\n  \"uploadId\": \"{{uploadId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/chatbot",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "chatbot"]
+        },
+        "description": "Ask the AI chatbot a question about a specific uploaded call recording."
+      }
+    },
+    {
+      "name": "Chatbot - General Question",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"question\": \"What are my top 3 areas for improvement across all my calls?\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/chatbot",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "chatbot"]
+        },
+        "description": "Ask the AI chatbot a general question about all your call recordings and analysis results."
+      }
+    },
+    {
+      "name": "Chatbot - Get Available Context",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/chatbot?userId={{userId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "chatbot"],
+          "query": [
+            {
+              "key": "userId",
+              "value": "{{userId}}",
+              "description": "User identifier"
+            }
+          ]
+        },
+        "description": "Get available context information for the chatbot, including completed analyses that can be queried."
+      }
     }
   ],
   "event": [

@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Download, Eye, EyeOff, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Target, Lightbulb, Star, Award } from 'lucide-react';
+import { RefreshCw, Download, Eye, EyeOff, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Target, Lightbulb, Star, Award, MessageCircle } from 'lucide-react';
 import { formatDate, getStatusColor, getStatusIcon } from '@/lib/utils';
+import Chatbot from './Chatbot';
 
 interface AnalysisResultsProps {
   userId: string;
@@ -35,6 +36,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
   const [expandedAnalysis, setExpandedAnalysis] = useState<string | null>(null);
   const [showTranscription, setShowTranscription] = useState<{ [key: string]: boolean }>({});
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: { [section: string]: boolean } }>({});
+  const [activeChatbot, setActiveChatbot] = useState<{ analysisId: string; uploadId: string } | null>(null);
 
   const fetchAnalyses = async () => {
     try {
@@ -505,16 +507,32 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
 
                 <div className="flex items-center space-x-3">
                   {analysis.status === 'COMPLETED' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        downloadAnalysis(analysis);
-                      }}
-                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Download Analysis"
-                    >
-                      <Download className="w-5 h-5" />
-                    </button>
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveChatbot({
+                            analysisId: analysis.id,
+                            uploadId: analysis.upload.id
+                          });
+                        }}
+                        className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                        title="Ask AI about this analysis"
+                      >
+                        <MessageCircle className="w-5 h-5" />
+                      </button>
+                      
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadAnalysis(analysis);
+                        }}
+                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Download Analysis"
+                      >
+                        <Download className="w-5 h-5" />
+                      </button>
+                    </>
                   )}
                   
                   <div className="text-gray-400 text-xl">
@@ -600,6 +618,16 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
           </div>
         ))}
       </div>
+      
+      {/* Chatbot for specific analysis */}
+      {activeChatbot && (
+        <Chatbot
+          userId={userId}
+          analysisId={activeChatbot.analysisId}
+          uploadId={activeChatbot.uploadId}
+          onClose={() => setActiveChatbot(null)}
+        />
+      )}
     </div>
   );
 }
