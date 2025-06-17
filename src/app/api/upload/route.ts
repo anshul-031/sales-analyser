@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: analysisStarted 
+      message: analysisStarted
         ? `${successCount} files uploaded and analysis started automatically`
         : `${successCount} files uploaded successfully`,
       results,

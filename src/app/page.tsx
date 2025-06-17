@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Upload, Settings, FileText, User, Zap, MessageCircle } from 'lucide-react';
+import { BarChart3, Upload, FileText, User, Zap, MessageCircle, Settings } from 'lucide-react';
 import FileUpload from '@/components/FileUpload';
-import AnalysisConfig from '@/components/AnalysisConfig';
 import AnalysisResults from '@/components/AnalysisResults';
 import Chatbot from '@/components/Chatbot';
 import { Logger } from '@/lib/utils';
@@ -13,7 +12,6 @@ const DEMO_USER_ID = 'demo-user-001';
 
 enum AppStep {
   UPLOAD = 'upload',
-  CONFIGURE = 'configure',
   RESULTS = 'results'
 }
 
@@ -73,13 +71,11 @@ export default function Home() {
       setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
       setCurrentStep(AppStep.RESULTS);
     } else if (uploadResponse.results) {
-      // Fallback: just update uploaded files and go to configure
+      // Just update uploaded files - no configuration step needed
       const successfulFiles = uploadResponse.results.filter((r) => r.success && r.id && r.originalName && r.uploadedAt);
       const newFiles = successfulFiles as Array<{ id: string; originalName: string; uploadedAt: string; [key: string]: unknown }>;
       setUploadedFiles(prev => [...newFiles, ...prev]);
-      if (newFiles.length > 0) {
-        setCurrentStep(AppStep.CONFIGURE);
-      }
+      // Files uploaded but no auto-analysis, stay on upload step
     }
     
     // Reload uploaded files to get the latest state
@@ -98,8 +94,6 @@ export default function Home() {
     switch (step) {
       case AppStep.UPLOAD:
         return uploadedFiles.length > 0 ? 'completed' : 'pending';
-      case AppStep.CONFIGURE:
-        return analysisIds.length > 0 ? 'completed' : uploadedFiles.length > 0 ? 'available' : 'pending';
       case AppStep.RESULTS:
         return analysisIds.length > 0 ? 'available' : 'pending';
       default:
@@ -148,15 +142,6 @@ export default function Home() {
             userId={DEMO_USER_ID}
             maxFiles={10}
             maxFileSize={50 * 1024 * 1024}
-          />
-        );
-      
-      case AppStep.CONFIGURE:
-        return (
-          <AnalysisConfig
-            uploadedFiles={uploadedFiles}
-            userId={DEMO_USER_ID}
-            onAnalysisStart={handleAnalysisStart}
           />
         );
       
@@ -226,19 +211,6 @@ export default function Home() {
                 <div className="font-medium">Upload Files</div>
                 <div className="text-xs opacity-75">
                   {uploadedFiles.length > 0 ? `${uploadedFiles.length} files uploaded` : 'Upload audio recordings'}
-                </div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => handleStepClick(AppStep.CONFIGURE)}
-              className={getStepClasses(AppStep.CONFIGURE)}
-            >
-              <Settings className="w-5 h-5" />
-              <div className="text-left">
-                <div className="font-medium">Configure Analysis</div>
-                <div className="text-xs opacity-75">
-                  {analysisIds.length > 0 ? 'Analysis configured' : 'Set analysis parameters'}
                 </div>
               </div>
             </button>

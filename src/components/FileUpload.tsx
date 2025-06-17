@@ -2,8 +2,9 @@
 
 import React, { useState, useCallback } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
-import { Upload, X, FileAudio, AlertCircle, CheckCircle } from 'lucide-react';
+import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target } from 'lucide-react';
 import { formatFileSize, isValidAudioFile } from '@/lib/utils';
+import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/gemini';
 
 interface FileUploadProps {
   onUploadComplete: (response: unknown) => void;
@@ -248,9 +249,33 @@ export default function FileUpload({
             </div>
           )}
 
+          {/* Analysis Parameters Preview */}
+          {pendingFiles > 0 && (
+            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center space-x-2 mb-3">
+                <Target className="w-5 h-5 text-blue-600" />
+                <h3 className="font-semibold text-blue-800">Analysis Parameters</h3>
+              </div>
+              <p className="text-sm text-blue-700 mb-3">
+                Your files will be automatically analyzed using these comprehensive sales performance criteria:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {Object.entries(DEFAULT_ANALYSIS_PARAMETERS).map(([key, param]) => (
+                  <div key={key} className="flex items-start space-x-2 text-sm">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0"></div>
+                    <div>
+                      <span className="font-medium text-blue-800">{param.name}</span>
+                      <p className="text-blue-600 text-xs mt-0.5">{param.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Upload Button */}
           {pendingFiles > 0 && (
-            <div className="mt-6">
+            <div className="mt-4">
               <button
                 onClick={uploadFiles}
                 disabled={isUploading}
@@ -266,7 +291,7 @@ export default function FileUpload({
                 {isUploading ? (
                   <div className="flex items-center justify-center space-x-2">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Uploading {files.length} files...</span>
+                    <span>Uploading & Analyzing {files.length} files...</span>
                   </div>
                 ) : (
                  `Upload & Analyze ${pendingFiles} Files`

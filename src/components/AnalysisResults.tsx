@@ -291,7 +291,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
 
         {/* Parameter Results in a grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {Object.entries(result.parameters).map(([key, param]: [string, any]) => 
+          {Object.entries(result.parameters).map(([key, param]: [string, any]) =>
             renderParameterCard(key, param, analysisId)
           )}
         </div>
@@ -577,7 +577,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                     )}
 
                     {/* Analysis Results */}
-                    {analysis.analysisType === 'default' 
+                    {analysis.analysisType === 'default'
                       ? renderDefaultAnalysisResult(analysis.analysisResult, analysis.id)
                       : renderCustomAnalysisResult(analysis.analysisResult)
                     }
