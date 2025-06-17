@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const files = formData.getAll('files') as File[];
     const userId = formData.get('userId') as string;
+    const customParametersStr = formData.get('customParameters') as string;
 
     if (!userId) {
       return NextResponse.json({
@@ -136,17 +137,42 @@ export async function POST(request: NextRequest) {
                         (host?.includes('localhost') ? 'http' : 'https');
         const baseUrl = `${protocol}://${host}`;
           
+        // Parse custom parameters if provided
+        let analysisPayload;
+        if (customParametersStr) {
+          try {
+            const customParameters = JSON.parse(customParametersStr);
+            analysisPayload = {
+              uploadIds: uploadIds,
+              analysisType: 'parameters',
+              customParameters: customParameters,
+              userId: userId,
+              autoTriggered: true
+            };
+          } catch (error) {
+            Logger.warn('[Upload API] Failed to parse custom parameters, using default analysis');
+            analysisPayload = {
+              uploadIds: uploadIds,
+              analysisType: 'default',
+              userId: userId,
+              autoTriggered: true
+            };
+          }
+        } else {
+          analysisPayload = {
+            uploadIds: uploadIds,
+            analysisType: 'default',
+            userId: userId,
+            autoTriggered: true
+          };
+        }
+
         const analyzeResponse = await fetch(`${baseUrl}/api/analyze`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            uploadIds: uploadIds,
-            analysisType: 'default',
-            userId: userId,
-            autoTriggered: true
-          })
+          body: JSON.stringify(analysisPayload)
         });
 
         if (analyzeResponse.ok) {

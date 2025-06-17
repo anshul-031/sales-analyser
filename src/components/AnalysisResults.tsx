@@ -145,11 +145,14 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
     return { icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-100' };
   };
 
-  const renderParameterCard = (key: string, param: any, analysisId: string) => {
+  const renderParameterCard = (key: string, param: any, analysisId: string, parameterName?: string) => {
     const badge = getScoreBadge(param.score || 0);
     const Icon = badge.icon;
     const sectionKey = `${analysisId}-${key}`;
     const isExpanded = expandedSections[analysisId]?.[key];
+
+    // Use custom parameter name if provided, otherwise format the key
+    const displayName = parameterName || key.replace(/_/g, ' ');
 
     return (
       <div key={key} className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
@@ -159,8 +162,8 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
               <Icon className={`w-5 h-5 ${badge.color}`} />
             </div>
             <div>
-              <h4 className="font-semibold text-gray-800 text-lg capitalize">
-                {key.replace(/_/g, ' ')}
+              <h4 className="font-semibold text-gray-800 text-lg">
+                {displayName}
               </h4>
               <p className="text-sm text-gray-500">Performance Analysis</p>
             </div>
@@ -292,7 +295,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
         {/* Parameter Results in a grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {Object.entries(result.parameters).map(([key, param]: [string, any]) =>
-            renderParameterCard(key, param, analysisId)
+            renderParameterCard(key, param, analysisId, result.parameterNames?.[key])
           )}
         </div>
 
@@ -577,7 +580,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                     )}
 
                     {/* Analysis Results */}
-                    {analysis.analysisType === 'default'
+                    {analysis.analysisType === 'default' || analysis.analysisType === 'parameters'
                       ? renderDefaultAnalysisResult(analysis.analysisResult, analysis.id)
                       : renderCustomAnalysisResult(analysis.analysisResult)
                     }

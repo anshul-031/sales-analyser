@@ -15,8 +15,15 @@ export interface MemoryUpload {
 export interface MemoryAnalysis {
   id: string;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-  analysisType: 'default' | 'custom';
+  analysisType: 'default' | 'custom' | 'parameters';
   customPrompt?: string;
+  customParameters?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    prompt: string;
+    enabled: boolean;
+  }>;
   transcription?: string;
   analysisResult?: any;
   errorMessage?: string;

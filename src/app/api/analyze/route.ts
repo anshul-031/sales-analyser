@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     Logger.info('[Analyze API] Starting analysis request');
 
-    const { uploadIds, analysisType, customPrompt, userId } = await request.json();
+    const { uploadIds, analysisType, customPrompt, customParameters, userId } = await request.json();
 
     if (!userId) {
       return NextResponse.json({
@@ -23,10 +23,10 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    if (analysisType !== 'default' && analysisType !== 'custom') {
+    if (analysisType !== 'default' && analysisType !== 'custom' && analysisType !== 'parameters') {
       return NextResponse.json({
         success: false,
-        error: 'Analysis type must be "default" or "custom"'
+        error: 'Analysis type must be "default", "custom", or "parameters"'
       }, { status: 400 });
     }
 
@@ -34,6 +34,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'Custom prompt is required for custom analysis'
+      }, { status: 400 });
+    }
+
+    if (analysisType === 'parameters' && (!customParameters || !Array.isArray(customParameters) || customParameters.length === 0)) {
+      return NextResponse.json({
+        success: false,
+        error: 'Custom parameters are required for parameter-based analysis'
       }, { status: 400 });
     }
 
@@ -66,6 +73,7 @@ export async function POST(request: NextRequest) {
           status: 'PENDING',
           analysisType,
           customPrompt,
+          customParameters: analysisType === 'parameters' ? customParameters : undefined,
           userId,
           uploadId,
         });
@@ -205,6 +213,8 @@ async function processAnalysisInBackground(analysisId: string, upload: { filenam
     let analysisResult;
     if (analysis.analysisType === 'custom' && analysis.customPrompt) {
       analysisResult = await geminiService.analyzeWithCustomPrompt(transcription, analysis.customPrompt);
+    } else if (analysis.analysisType === 'parameters' && analysis.customParameters) {
+      analysisResult = await geminiService.analyzeWithCustomParameters(transcription, analysis.customParameters);
     } else {
       analysisResult = await geminiService.analyzeWithDefaultParameters(transcription);
     }

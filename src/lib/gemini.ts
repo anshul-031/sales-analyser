@@ -125,6 +125,88 @@ export class GeminiAnalysisService {
   }
 
   /**
+   * Analyze sales call using custom parameters
+   */
+  async analyzeWithCustomParameters(transcription: string, parameters: Array<{id: string; name: string; description: string; prompt: string; enabled: boolean}>): Promise<any> {
+    try {
+      console.log('[GeminiService] Starting custom parameters analysis');
+      
+      const results: any = {};
+      const enabledParameters = parameters.filter(p => p.enabled);
+      
+      for (const parameter of enabledParameters) {
+        console.log(`[GeminiService] Analyzing: ${parameter.name}`);
+        
+        const prompt = `${parameter.prompt}
+
+Sales Call Transcription:
+${transcription}
+
+Please provide your analysis in the following JSON format:
+{
+  "score": <number from 1-10>,
+  "summary": "<brief summary>",
+  "strengths": ["<strength 1>", "<strength 2>"],
+  "improvements": ["<improvement 1>", "<improvement 2>"],
+  "specific_examples": ["<example 1>", "<example 2>"],
+  "recommendations": ["<recommendation 1>", "<recommendation 2>"]
+}`;
+
+        const result = await this.model.generateContent(prompt);
+        const response = await result.response;
+        const analysisText = response.text();
+        
+        try {
+          // Extract JSON from response
+          const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            results[parameter.id] = JSON.parse(jsonMatch[0]);
+          } else {
+            results[parameter.id] = {
+              score: 0,
+              summary: analysisText,
+              strengths: [],
+              improvements: [],
+              specific_examples: [],
+              recommendations: []
+            };
+          }
+        } catch (parseError) {
+          console.error(`[GeminiService] JSON parse error for ${parameter.name}:`, parseError);
+          results[parameter.id] = {
+            score: 0,
+            summary: analysisText,
+            strengths: [],
+            improvements: [],
+            specific_examples: [],
+            recommendations: []
+          };
+        }
+      }
+      
+      // Calculate overall score
+      const scores = Object.values(results).map((r: any) => r.score).filter(s => s > 0);
+      const overallScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+      
+      console.log('[GeminiService] Custom parameters analysis completed');
+      
+      return {
+        type: 'parameters',
+        overallScore,
+        analysisDate: new Date().toISOString(),
+        parameters: results,
+        parameterNames: enabledParameters.reduce((acc, param) => {
+          acc[param.id] = param.name;
+          return acc;
+        }, {} as Record<string, string>)
+      };
+    } catch (error) {
+      console.error('[GeminiService] Custom parameters analysis error:', error);
+      throw new Error(`Custom parameters analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Analyze sales call using default parameters
    */
   async analyzeWithDefaultParameters(transcription: string): Promise<any> {

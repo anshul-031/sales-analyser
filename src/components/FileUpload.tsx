@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
-import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target } from 'lucide-react';
+import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target, Edit3, Save, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatFileSize, isValidAudioFile } from '@/lib/utils';
 import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/gemini';
 
@@ -30,6 +30,50 @@ export default function FileUpload({
 }: FileUploadProps) {
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [analysisParameters, setAnalysisParameters] = useState(() =>
+    Object.entries(DEFAULT_ANALYSIS_PARAMETERS).map(([key, param]) => ({
+      id: key,
+      name: param.name,
+      description: param.description,
+      prompt: param.prompt,
+      enabled: true
+    }))
+  );
+  const [showParameterDetails, setShowParameterDetails] = useState(false);
+  const [editingParameter, setEditingParameter] = useState<string | null>(null);
+
+  const handleParameterToggle = (id: string) => {
+    setAnalysisParameters(prev =>
+      prev.map(param =>
+        param.id === id ? { ...param, enabled: !param.enabled } : param
+      )
+    );
+  };
+
+  const handleParameterEdit = (id: string, updates: Partial<typeof analysisParameters[0]>) => {
+    setAnalysisParameters(prev =>
+      prev.map(param =>
+        param.id === id ? { ...param, ...updates } : param
+      )
+    );
+    setEditingParameter(null);
+  };
+
+  const addNewParameter = () => {
+    const newParam = {
+      id: `custom_${Date.now()}`,
+      name: 'New Analysis Parameter',
+      description: 'Custom analysis criteria',
+      prompt: 'Analyze this aspect of the sales call...',
+      enabled: true
+    };
+    setAnalysisParameters(prev => [...prev, newParam]);
+    setEditingParameter(newParam.id);
+  };
+
+  const removeParameter = (id: string) => {
+    setAnalysisParameters(prev => prev.filter(param => param.id !== id));
+  };
 
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
     console.log('[FileUpload] Files dropped:', { accepted: acceptedFiles.length, rejected: rejectedFiles.length });
@@ -83,6 +127,10 @@ export default function FileUpload({
         formData.append('files', file);
       });
       formData.append('userId', userId);
+      
+      // Add custom analysis parameters
+      const enabledParams = analysisParameters.filter(p => p.enabled);
+      formData.append('customParameters', JSON.stringify(enabledParams));
 
       // Update status to uploading
       setFiles(prev => prev.map(f => ({ ...f, status: 'uploading' as const })));
@@ -119,18 +167,18 @@ export default function FileUpload({
         }
       } else {
         console.error('[FileUpload] Upload failed:', result.error);
-        setFiles(prev => prev.map(f => ({ 
-          ...f, 
-          status: 'error' as const, 
-          error: result.error || 'Upload failed' 
+        setFiles(prev => prev.map(f => ({
+          ...f,
+          status: 'error' as const,
+          error: result.error || 'Upload failed'
         })));
       }
     } catch (error) {
       console.error('[FileUpload] Upload error:', error);
-      setFiles(prev => prev.map(f => ({ 
-        ...f, 
-        status: 'error' as const, 
-        error: 'Network error occurred' 
+      setFiles(prev => prev.map(f => ({
+        ...f,
+        status: 'error' as const,
+        error: 'Network error occurred'
       })));
     } finally {
       setIsUploading(false);
@@ -249,27 +297,105 @@ export default function FileUpload({
             </div>
           )}
 
-          {/* Analysis Parameters Preview */}
+          {/* Analysis Parameters Configuration */}
           {pendingFiles > 0 && (
             <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center space-x-2 mb-3">
-                <Target className="w-5 h-5 text-blue-600" />
-                <h3 className="font-semibold text-blue-800">Analysis Parameters</h3>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <Target className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-semibold text-blue-800">Analysis Parameters</h3>
+                  <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                    {analysisParameters.filter(p => p.enabled).length} selected
+                  </span>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setShowParameterDetails(!showParameterDetails)}
+                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center space-x-1"
+                  >
+                    {showParameterDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    <span>{showParameterDetails ? 'Hide' : 'Edit'}</span>
+                  </button>
+                  <button
+                    onClick={addNewParameter}
+                    className="text-xs text-green-600 hover:text-green-800 flex items-center space-x-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add</span>
+                  </button>
+                </div>
               </div>
+              
               <p className="text-sm text-blue-700 mb-3">
-                Your files will be automatically analyzed using these comprehensive sales performance criteria:
+                Configure which aspects will be analyzed in your sales calls:
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {Object.entries(DEFAULT_ANALYSIS_PARAMETERS).map(([key, param]) => (
-                  <div key={key} className="flex items-start space-x-2 text-sm">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0"></div>
-                    <div>
-                      <span className="font-medium text-blue-800">{param.name}</span>
-                      <p className="text-blue-600 text-xs mt-0.5">{param.description}</p>
+
+              {!showParameterDetails ? (
+                // Compact view - just show enabled parameters
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {analysisParameters.filter(p => p.enabled).map((param) => (
+                    <div key={param.id} className="flex items-start space-x-2 text-sm">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0"></div>
+                      <div>
+                        <span className="font-medium text-blue-800">{param.name}</span>
+                        <p className="text-blue-600 text-xs mt-0.5">{param.description}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                // Detailed editable view
+                <div className="space-y-3">
+                  {analysisParameters.map((param) => (
+                    <div key={param.id} className="border border-blue-200 rounded-lg p-3 bg-white">
+                      {editingParameter === param.id ? (
+                        <EditParameterForm
+                          parameter={param}
+                          onSave={(updates) => handleParameterEdit(param.id, updates)}
+                          onCancel={() => setEditingParameter(null)}
+                        />
+                      ) : (
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start space-x-3 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={param.enabled}
+                              onChange={() => handleParameterToggle(param.id)}
+                              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 mt-1"
+                            />
+                            <div className="flex-1">
+                              <h4 className={`font-medium text-sm ${param.enabled ? 'text-gray-800' : 'text-gray-500'}`}>
+                                {param.name}
+                              </h4>
+                              <p className={`text-xs mt-1 ${param.enabled ? 'text-gray-600' : 'text-gray-400'}`}>
+                                {param.description}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex space-x-1 ml-2">
+                            <button
+                              onClick={() => setEditingParameter(param.id)}
+                              className="p-1 text-gray-400 hover:text-blue-600"
+                              title="Edit parameter"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                            </button>
+                            {param.id.startsWith('custom_') && (
+                              <button
+                                onClick={() => removeParameter(param.id)}
+                                className="p-1 text-gray-400 hover:text-red-600"
+                                title="Remove parameter"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -301,6 +427,90 @@ export default function FileUpload({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Edit Parameter Form Component
+interface EditParameterFormProps {
+  parameter: {
+    id: string;
+    name: string;
+    description: string;
+    prompt: string;
+    enabled: boolean;
+  };
+  onSave: (updates: any) => void;
+  onCancel: () => void;
+}
+
+function EditParameterForm({ parameter, onSave, onCancel }: EditParameterFormProps) {
+  const [name, setName] = useState(parameter.name);
+  const [description, setDescription] = useState(parameter.description);
+  const [prompt, setPrompt] = useState(parameter.prompt);
+
+  const handleSave = () => {
+    if (!name.trim() || !prompt.trim()) {
+      return;
+    }
+    onSave({
+      name: name.trim(),
+      description: description.trim(),
+      prompt: prompt.trim()
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Parameter Name
+        </label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Description
+        </label>
+        <input
+          type="text"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Analysis Prompt
+        </label>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={3}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent resize-none"
+        />
+      </div>
+      <div className="flex space-x-2">
+        <button
+          onClick={handleSave}
+          disabled={!name.trim() || !prompt.trim()}
+          className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center space-x-1"
+        >
+          <Save className="w-3 h-3" />
+          <span>Save</span>
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-3 py-1 text-gray-600 text-xs border border-gray-300 rounded hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
