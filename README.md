@@ -12,6 +12,7 @@ A modern AI-powered sales call analysis application built with Next.js and Googl
 - **📱 Modern UI**: Responsive design with real-time updates
 - **🔄 Background Processing**: Non-blocking analysis with live status updates
 - **📥 Export Functionality**: Download detailed analysis reports
+- **📊 Analytics & Performance**: Vercel Analytics for insights and Core Web Vitals monitoring
 
 ## 🚀 Quick Start
 
@@ -67,6 +68,8 @@ A modern AI-powered sales call analysis application built with Next.js and Googl
    - Vercel automatically sets `VERCEL_URL` environment variable
    - Application uses relative URLs for internal API calls
    - No additional configuration needed for file storage
+   - **Analytics**: Vercel Analytics automatically enabled on deployment
+   - **Performance Monitoring**: Speed Insights tracks Core Web Vitals
 
 ### Other Platforms
 
@@ -352,6 +355,7 @@ Import `postman/Sales_Analyzer_API.postman_collection.json` into Postman for com
 - **Storage**: File-based JSON storage
 - **Icons**: Lucide React
 - **File Upload**: React Dropzone
+- **Analytics**: Vercel Analytics & Speed Insights
 
 ### Project Structure
 ```
@@ -454,10 +458,11 @@ node test-setup.js  # Verify configuration
 
 ### Getting Help
 
-1. **Check Documentation**: Review this README and FILE_STORAGE_README.md
+1. **Check Documentation**: Review this README, FILE_STORAGE_README.md, and VERCEL_ANALYTICS_SETUP.md
 2. **Run Tests**: Use verification scripts
 3. **Check Logs**: Review console output for detailed errors
 4. **API Testing**: Use Postman collection for debugging
+5. **Analytics**: Monitor performance and usage through Vercel Dashboard
 
 ## 📋 Roadmap
 
