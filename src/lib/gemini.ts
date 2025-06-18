@@ -51,10 +51,24 @@ class GeminiAPIKeyManager {
     return currentKey;
   }
 
+  getNextAPIKey(): string {
+    if (this.apiKeys.length === 0) {
+      throw new Error('No valid Google Gemini API keys configured. Please update GOOGLE_GEMINI_API_KEYS in .env file with a JSON array of API keys.');
+    }
+
+    const currentKey = this.apiKeys[this.currentIndex];
+    console.log(`[GeminiAPIKeyManager] Using API key ${this.currentIndex + 1}/${this.apiKeys.length} (${currentKey.substring(0, 10)}...)`);
+    
+    // Automatically rotate to next key for round-robin usage
+    this.rotateToNextKey();
+    
+    return currentKey;
+  }
+
   rotateToNextKey(): void {
     if (this.apiKeys.length > 0) {
       this.currentIndex = (this.currentIndex + 1) % this.apiKeys.length;
-      console.log(`[GeminiAPIKeyManager] Rotated to API key ${this.currentIndex + 1}/${this.apiKeys.length}`);
+      console.log(`[GeminiAPIKeyManager] Rotated to API key ${this.currentIndex + 1}/${this.apiKeys.length} for next request`);
     }
   }
 
@@ -128,8 +142,8 @@ export const DEFAULT_ANALYSIS_PARAMETERS = {
 
 export class GeminiAnalysisService {
   private getCurrentModel() {
-    // Get current API key and create a new client
-    const currentApiKey = apiKeyManager.getCurrentAPIKey();
+    // Get next API key in round-robin fashion and create a new client
+    const currentApiKey = apiKeyManager.getNextAPIKey();
     const genAI = new GoogleGenerativeAI(currentApiKey);
     return genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   }
@@ -155,8 +169,7 @@ export class GeminiAnalysisService {
           error.message.includes('429') ||
           error.message.includes('Too Many Requests')
         )) {
-          console.log('[GeminiService] Rate limit detected, rotating to next API key...');
-          apiKeyManager.rotateToNextKey();
+          console.log('[GeminiService] Rate limit detected, will try next API key...');
           
           // Add a small delay before retry
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -164,8 +177,7 @@ export class GeminiAnalysisService {
           // Don't retry for non-rate-limit errors on the last attempt
           break;
         } else {
-          // For other errors, still try rotating the key
-          apiKeyManager.rotateToNextKey();
+          // For other errors, add a small delay before retry
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
