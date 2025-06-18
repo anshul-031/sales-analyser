@@ -1,7 +1,70 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Initialize the Google Generative AI client
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!);
+// Round-robin API key management
+class GeminiAPIKeyManager {
+  private apiKeys: string[] = [];
+  private currentIndex = 0;
+
+  constructor() {
+    this.loadAPIKeys();
+  }
+
+  private loadAPIKeys() {
+    try {
+      const apiKeysEnv = process.env.GOOGLE_GEMINI_API_KEYS;
+      if (!apiKeysEnv) {
+        console.warn('[GeminiAPIKeyManager] Warning: GOOGLE_GEMINI_API_KEYS not found in environment variables');
+        return;
+      }
+
+      // Parse the JSON array from environment variable
+      this.apiKeys = JSON.parse(apiKeysEnv);
+      
+      if (!Array.isArray(this.apiKeys) || this.apiKeys.length === 0) {
+        console.warn('[GeminiAPIKeyManager] Warning: GOOGLE_GEMINI_API_KEYS should be a non-empty JSON array');
+        this.apiKeys = [];
+        return;
+      }
+
+      // Filter out invalid keys
+      this.apiKeys = this.apiKeys.filter(key => key && typeof key === 'string' && key.trim().length > 0);
+      
+      if (this.apiKeys.length === 0) {
+        console.warn('[GeminiAPIKeyManager] Warning: No valid API keys found in GOOGLE_GEMINI_API_KEYS');
+      } else {
+        console.log(`[GeminiAPIKeyManager] Loaded ${this.apiKeys.length} API key(s) for round-robin usage`);
+      }
+    } catch (error) {
+      console.error('[GeminiAPIKeyManager] Error parsing GOOGLE_GEMINI_API_KEYS:', error);
+      this.apiKeys = [];
+    }
+  }
+
+  getCurrentAPIKey(): string {
+    if (this.apiKeys.length === 0) {
+      throw new Error('No valid Google Gemini API keys configured. Please update GOOGLE_GEMINI_API_KEYS in .env file with a JSON array of API keys.');
+    }
+
+    const currentKey = this.apiKeys[this.currentIndex];
+    console.log(`[GeminiAPIKeyManager] Using API key ${this.currentIndex + 1}/${this.apiKeys.length} (${currentKey.substring(0, 10)}...)`);
+    
+    return currentKey;
+  }
+
+  rotateToNextKey(): void {
+    if (this.apiKeys.length > 0) {
+      this.currentIndex = (this.currentIndex + 1) % this.apiKeys.length;
+      console.log(`[GeminiAPIKeyManager] Rotated to API key ${this.currentIndex + 1}/${this.apiKeys.length}`);
+    }
+  }
+
+  getKeyCount(): number {
+    return this.apiKeys.length;
+  }
+}
+
+// Initialize the API key manager
+const apiKeyManager = new GeminiAPIKeyManager();
 
 // Default sales analysis parameters
 export const DEFAULT_ANALYSIS_PARAMETERS = {
@@ -64,40 +127,82 @@ export const DEFAULT_ANALYSIS_PARAMETERS = {
 };
 
 export class GeminiAnalysisService {
-  private model;
+  private getCurrentModel() {
+    // Get current API key and create a new client
+    const currentApiKey = apiKeyManager.getCurrentAPIKey();
+    const genAI = new GoogleGenerativeAI(currentApiKey);
+    return genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  }
 
-  constructor() {
-    // Check if API key is configured
-    if (!process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY === 'your_actual_google_gemini_api_key_here') {
-      console.warn('[GeminiService] Warning: Google Gemini API key not configured. Please update GOOGLE_GEMINI_API_KEY in .env file.');
+  private async makeAPICallWithRetry<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = apiKeyManager.getKeyCount()
+  ): Promise<T> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        console.log(`[GeminiService] API call attempt ${attempt + 1}/${maxRetries}`);
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        console.error(`[GeminiService] API call failed on attempt ${attempt + 1}:`, error);
+        
+        // Check if it's a rate limit or quota error that might benefit from key rotation
+        if (error instanceof Error && (
+          error.message.includes('QUOTA_EXCEEDED') ||
+          error.message.includes('RATE_LIMIT_EXCEEDED') ||
+          error.message.includes('429') ||
+          error.message.includes('Too Many Requests')
+        )) {
+          console.log('[GeminiService] Rate limit detected, rotating to next API key...');
+          apiKeyManager.rotateToNextKey();
+          
+          // Add a small delay before retry
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else if (attempt === maxRetries - 1) {
+          // Don't retry for non-rate-limit errors on the last attempt
+          break;
+        } else {
+          // For other errors, still try rotating the key
+          apiKeyManager.rotateToNextKey();
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
     }
     
-    this.model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    throw lastError || new Error('All API calls failed');
+  }
+
+  constructor() {
+    console.log(`[GeminiService] Initialized with ${apiKeyManager.getKeyCount()} API key(s) and gemini-2.0-flash model`);
   }
 
   /**
    * Transcribe audio content using Gemini API
    */
   async transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {
+    console.log(`[GeminiService] Starting audio transcription, size: ${audioBuffer.length} bytes`);
+    
+    const base64Audio = audioBuffer.toString('base64');
+    const prompt = "Please transcribe this audio file accurately. Focus on capturing all spoken words, including any sales conversation, questions, and responses.";
+    
     try {
-      console.log(`[GeminiService] Starting audio transcription, size: ${audioBuffer.length} bytes`);
-      
-      const base64Audio = audioBuffer.toString('base64');
-      
-      const prompt = "Please transcribe this audio file accurately. Focus on capturing all spoken words, including any sales conversation, questions, and responses.";
-      
-      const result = await this.model.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data: base64Audio,
-            mimeType: mimeType,
+      const transcription = await this.makeAPICallWithRetry(async () => {
+        const model = this.getCurrentModel();
+        const result = await model.generateContent([
+          prompt,
+          {
+            inlineData: {
+              data: base64Audio,
+              mimeType: mimeType,
+            },
           },
-        },
-      ]);
+        ]);
 
-      const response = await result.response;
-      const transcription = response.text();
+        const response = await result.response;
+        return response.text();
+      });
       
       console.log(`[GeminiService] Transcription completed, length: ${transcription.length} characters`);
       return transcription;
@@ -107,16 +212,16 @@ export class GeminiAnalysisService {
       // Provide user-friendly error messages
       if (error instanceof Error) {
         if (error.message.includes('API key not valid')) {
-          throw new Error('Invalid Google Gemini API key. Please check your GOOGLE_GEMINI_API_KEY in the .env file. Visit https://aistudio.google.com/ to get a valid API key.');
+          throw new Error('Invalid Google Gemini API key. Please check your GOOGLE_GEMINI_API_KEYS in the .env file. Visit https://aistudio.google.com/ to get valid API keys.');
         }
         if (error.message.includes('API_KEY_INVALID')) {
-          throw new Error('Google Gemini API key is invalid. Please update GOOGLE_GEMINI_API_KEY in your .env file with a valid key from https://aistudio.google.com/');
+          throw new Error('Google Gemini API key is invalid. Please update GOOGLE_GEMINI_API_KEYS in your .env file with valid keys from https://aistudio.google.com/');
         }
         if (error.message.includes('PERMISSION_DENIED')) {
           throw new Error('Permission denied for Google Gemini API. Please check your API key permissions and quotas.');
         }
         if (error.message.includes('QUOTA_EXCEEDED')) {
-          throw new Error('Google Gemini API quota exceeded. Please check your usage limits in Google AI Studio.');
+          throw new Error('Google Gemini API quota exceeded. All configured API keys have reached their limits. Please check your usage limits in Google AI Studio.');
         }
       }
       
@@ -152,9 +257,12 @@ Please provide your analysis in the following JSON format:
   "recommendations": ["<recommendation 1>", "<recommendation 2>"]
 }`;
 
-        const result = await this.model.generateContent(prompt);
-        const response = await result.response;
-        const analysisText = response.text();
+        const analysisText = await this.makeAPICallWithRetry(async () => {
+          const model = this.getCurrentModel();
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          return response.text();
+        });
         
         try {
           // Extract JSON from response
@@ -233,9 +341,12 @@ Please provide your analysis in the following JSON format:
   "recommendations": ["<recommendation 1>", "<recommendation 2>"]
 }`;
 
-        const result = await this.model.generateContent(prompt);
-        const response = await result.response;
-        const analysisText = response.text();
+        const analysisText = await this.makeAPICallWithRetry(async () => {
+          const model = this.getCurrentModel();
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          return response.text();
+        });
         
         try {
           // Extract JSON from response
@@ -307,9 +418,12 @@ Please provide a comprehensive analysis based on the instructions above. Format 
   "specific_examples": ["<example 1>", "<example 2>"]
 }`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const analysisText = response.text();
+      const analysisText = await this.makeAPICallWithRetry(async () => {
+        const model = this.getCurrentModel();
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
       
       let analysisResult;
       try {
@@ -353,6 +467,45 @@ Please provide a comprehensive analysis based on the instructions above. Format 
     } catch (error) {
       console.error('[GeminiService] Custom analysis error:', error);
       throw new Error(`Custom analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Generate chatbot response using Gemini API
+   */
+  async generateChatbotResponse(prompt: string): Promise<string> {
+    console.log('[GeminiService] Starting chatbot response generation');
+    
+    try {
+      const response = await this.makeAPICallWithRetry(async () => {
+        const model = this.getCurrentModel();
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
+      
+      console.log(`[GeminiService] Chatbot response generated, length: ${response.length} characters`);
+      return response;
+    } catch (error) {
+      console.error('[GeminiService] Chatbot response error:', error);
+      
+      // Provide user-friendly error messages
+      if (error instanceof Error) {
+        if (error.message.includes('API key not valid')) {
+          throw new Error('Invalid Google Gemini API key. Please check your GOOGLE_GEMINI_API_KEYS in the .env file.');
+        }
+        if (error.message.includes('API_KEY_INVALID')) {
+          throw new Error('Google Gemini API key is invalid. Please update GOOGLE_GEMINI_API_KEYS in your .env file.');
+        }
+        if (error.message.includes('PERMISSION_DENIED')) {
+          throw new Error('Permission denied for Google Gemini API. Please check your API key permissions and quotas.');
+        }
+        if (error.message.includes('QUOTA_EXCEEDED')) {
+          throw new Error('Google Gemini API quota exceeded. All configured API keys have reached their limits.');
+        }
+      }
+      
+      throw new Error(`Chatbot response failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }

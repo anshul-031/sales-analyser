@@ -132,13 +132,9 @@ ${contextData}
 **Response Format:**
 Provide a clear, helpful response that directly addresses the user's question. Include relevant details from the call transcriptions and analysis results to support your answer.`;
 
-    // Get response from Gemini
+    // Get response from Gemini using our service with round-robin API keys
     Logger.info('[ChatbotAPI] Sending query to Gemini service');
-    const model = new (await import('@google/generative-ai')).GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY!).getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-    
-    const result = await model.generateContent(chatbotPrompt);
-    const response = await result.response;
-    const answer = response.text();
+    const answer = await geminiService.generateChatbotResponse(chatbotPrompt);
 
     Logger.info('[ChatbotAPI] Chatbot response generated successfully');
 

@@ -97,8 +97,12 @@ For other platforms (Railway, Heroku, etc.), ensure:
 Create a `.env` file with the following variables:
 
 ```env
-# Required: Google Gemini AI Configuration
-GOOGLE_GEMINI_API_KEY=your_gemini_api_key_here
+# Required: Google Gemini AI Configuration (Multiple API Keys for Round-Robin)
+# Use JSON array format to support multiple API keys for rate limit management
+GOOGLE_GEMINI_API_KEYS=["your_first_api_key_here", "your_second_api_key_here"]
+
+# Single API key example (still supported):
+# GOOGLE_GEMINI_API_KEYS=["your_single_api_key_here"]
 
 # Optional: Application Configuration
 NEXTAUTH_SECRET=your-nextauth-secret-here
@@ -109,12 +113,27 @@ UPLOAD_DIR=./uploads
 AUTO_DELETE_FILES=true
 ```
 
-### Getting Your Gemini API Key
+### 🔑 Multiple API Key Support
+
+The application now supports **multiple Google Gemini API keys** for improved rate limit handling:
+
+- **Round-Robin**: Automatically rotates between API keys
+- **Rate Limit Protection**: Switches keys when quotas are exceeded
+- **Fault Tolerance**: Continues working if some keys fail
+- **JSON Array Format**: Configure multiple keys as `["key1", "key2", "key3"]`
+
+### Getting Your Gemini API Keys
 
 1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Sign in with your Google account
-3. Create a new API key
-4. Copy the key to your `.env` file
+3. Create multiple API keys (recommended: 2-3 keys)
+4. Add them to your `.env` file as a JSON array
+5. **Pro Tip**: Use different Google accounts for separate quotas
+
+**Example with multiple keys:**
+```env
+GOOGLE_GEMINI_API_KEYS=["AIzaSyC...key1", "AIzaSyD...key2", "AIzaSyE...key3"]
+```
 
 ## 📁 File-Based Storage System
 
