@@ -128,9 +128,10 @@ ${contextData}
 7. Keep your response conversational but professional
 8. Use bullet points or numbered lists for clarity when listing multiple items
 9. If referring to scores, always mention the scale (1-10) and provide context
+10. **IMPORTANT: Keep responses SHORT and TO THE POINT. Provide concise answers that directly address the question without excessive detail or explanation.**
 
 **Response Format:**
-Provide a clear, helpful response that directly addresses the user's question. Include relevant details from the call transcriptions and analysis results to support your answer.`;
+Provide a brief, clear response that directly addresses the user's question. Be concise and focus on the most important information from the call transcriptions and analysis results.`;
 
     // Get response from Gemini using our service with round-robin API keys
     Logger.info('[ChatbotAPI] Sending query to Gemini service');
