@@ -109,7 +109,7 @@ GOOGLE_GEMINI_API_KEYS=["your_first_api_key_here", "your_second_api_key_here"]
 
 # Optional: Application Configuration
 NEXTAUTH_SECRET=your-nextauth-secret-here
-MAX_FILE_SIZE=52428800
+MAX_FILE_SIZE=5242880
 UPLOAD_DIR=./uploads
 
 # File Management
@@ -164,7 +164,7 @@ sales-analyser/
 ### 1. Upload Audio Files
 
 - **Supported Formats**: MP3, WAV, M4A, AAC, OGG, FLAC, WebM
-- **File Size Limit**: 50MB per file
+- **File Size Limit**: 5MB per file
 - **Upload Method**: Drag & drop or click to select
 
 ### 2. Choose Analysis Type

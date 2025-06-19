@@ -6,9 +6,10 @@ import FileUpload from '@/components/FileUpload';
 import AnalysisResults from '@/components/AnalysisResults';
 import Chatbot from '@/components/Chatbot';
 import { Logger } from '@/lib/utils';
+import { MAX_FILE_SIZE, MAX_FILES, USER_CONFIG } from '@/lib/constants';
 
 // Simulate user authentication for demo purposes
-const DEMO_USER_ID = 'demo-user-001';
+const DEMO_USER_ID = USER_CONFIG.DEMO_USER_ID;
 
 enum AppStep {
   UPLOAD = 'upload',
@@ -140,8 +141,8 @@ export default function Home() {
           <FileUpload
             onUploadComplete={handleUploadComplete}
             userId={DEMO_USER_ID}
-            maxFiles={10}
-            maxFileSize={50 * 1024 * 1024}
+            maxFiles={MAX_FILES}
+            maxFileSize={MAX_FILE_SIZE}
           />
         );
       

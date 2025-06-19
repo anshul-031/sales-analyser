@@ -1,25 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
 import { MemoryStorage } from '@/lib/memory-storage';
+import { FILE_UPLOAD_CONFIG } from '@/lib/constants';
 
-// File validation constants
-const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '52428800'); // 50MB default
-const ALLOWED_MIME_TYPES = [
-  'audio/mpeg',     // MP3
-  'audio/wav',      // WAV
-  'audio/x-wav',    // WAV alternative
-  'audio/mp4',      // M4A
-  'audio/aac',      // AAC
-  'audio/ogg',      // OGG
-  'audio/flac',     // FLAC
-  'audio/webm',     // WebM
-];
-
-const ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.webm'];
+// File validation constants - use centralized config with env override
+const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || FILE_UPLOAD_CONFIG.MAX_FILE_SIZE.toString());
+const ALLOWED_MIME_TYPES = FILE_UPLOAD_CONFIG.ALLOWED_MIME_TYPES;
+const ALLOWED_EXTENSIONS = FILE_UPLOAD_CONFIG.ALLOWED_EXTENSIONS;
 
 function isValidAudioFile(file: File): boolean {
   const extension = file.name.toLowerCase().split('.').pop();
-  return ALLOWED_MIME_TYPES.includes(file.type) || ALLOWED_EXTENSIONS.includes(`.${extension}`);
+  const fileExtension = `.${extension}`;
+  
+  return (ALLOWED_MIME_TYPES as readonly string[]).includes(file.type) ||
+         (ALLOWED_EXTENSIONS as readonly string[]).includes(fileExtension);
 }
 
 export async function POST(request: NextRequest) {

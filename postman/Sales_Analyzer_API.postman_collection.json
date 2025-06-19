@@ -61,7 +61,7 @@
           "host": ["{{baseUrl}}"],
           "path": ["api", "upload"]
         },
-        "description": "Upload one or more audio files for analysis. Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WebM. Max file size: 50MB per file."
+        "description": "Upload one or more audio files for analysis. Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WebM. Max file size: 5MB per file."
       },
       "event": [
         {

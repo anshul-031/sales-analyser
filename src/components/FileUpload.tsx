@@ -5,6 +5,7 @@ import { useDropzone, FileRejection } from 'react-dropzone';
 import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target, Edit3, Save, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatFileSize, isValidAudioFile } from '@/lib/utils';
 import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/gemini';
+import { MAX_FILE_SIZE, MAX_FILES } from '@/lib/constants';
 
 interface FileUploadProps {
   onUploadComplete: (response: unknown) => void;
@@ -22,14 +23,15 @@ interface UploadFile {
   uploadId?: string;
 }
 
-export default function FileUpload({ 
-  onUploadComplete, 
-  userId, 
-  maxFiles = 10, 
-  maxFileSize = 50 * 1024 * 1024 
+export default function FileUpload({
+  onUploadComplete,
+  userId,
+  maxFiles = MAX_FILES,
+  maxFileSize = MAX_FILE_SIZE
 }: FileUploadProps) {
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [errorMessages, setErrorMessages] = useState<string[]>([]);
   const [analysisParameters, setAnalysisParameters] = useState(() =>
     Object.entries(DEFAULT_ANALYSIS_PARAMETERS).map(([key, param]) => ({
       id: key,
@@ -78,9 +80,29 @@ export default function FileUpload({
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
     console.log('[FileUpload] Files dropped:', { accepted: acceptedFiles.length, rejected: rejectedFiles.length });
 
-    // Handle rejected files
+    // Clear previous error messages
+    setErrorMessages([]);
+
+    // Handle rejected files with user-friendly error messages
     if (rejectedFiles.length > 0) {
       console.warn('[FileUpload] Rejected files:', rejectedFiles);
+      
+      const errors: string[] = [];
+      rejectedFiles.forEach(({ file, errors: fileErrors }) => {
+        fileErrors.forEach(error => {
+          if (error.code === 'file-too-large') {
+            errors.push(`"${file.name}" is too large. Maximum file size is ${formatFileSize(maxFileSize)}.`);
+          } else if (error.code === 'file-invalid-type') {
+            errors.push(`"${file.name}" has an invalid file type. Please upload audio files only (MP3, WAV, M4A, AAC, OGG, FLAC, WebM).`);
+          } else if (error.code === 'too-many-files') {
+            errors.push(`Too many files selected. Maximum ${maxFiles} files allowed.`);
+          } else {
+            errors.push(`"${file.name}" was rejected: ${error.message}`);
+          }
+        });
+      });
+      
+      setErrorMessages(errors);
     }
 
     // Add accepted files to the list
@@ -94,11 +116,12 @@ export default function FileUpload({
       const combined = [...prev, ...newFiles];
       if (combined.length > maxFiles) {
         console.warn(`[FileUpload] Too many files. Limit: ${maxFiles}`);
+        setErrorMessages(prev => [...prev, `Too many files selected. Only the first ${maxFiles} files will be kept.`]);
         return combined.slice(0, maxFiles);
       }
       return combined;
     });
-  }, [maxFiles]);
+  }, [maxFiles, maxFileSize]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -235,6 +258,34 @@ export default function FileUpload({
           Max file size: {formatFileSize(maxFileSize)} | Max files: {maxFiles}
         </p>
       </div>
+
+      {/* Error Messages */}
+      {errorMessages.length > 0 && (
+        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start">
+            <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-red-800 mb-2">
+                Unable to upload {errorMessages.length} file{errorMessages.length > 1 ? 's' : ''}:
+              </h4>
+              <ul className="text-sm text-red-700 space-y-1">
+                {errorMessages.map((error, index) => (
+                  <li key={index} className="flex items-start">
+                    <span className="w-1.5 h-1.5 bg-red-400 rounded-full mt-2 mr-2 flex-shrink-0"></span>
+                    {error}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => setErrorMessages([])}
+                className="mt-3 text-xs text-red-600 hover:text-red-800 underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* File List */}
       {files.length > 0 && (
