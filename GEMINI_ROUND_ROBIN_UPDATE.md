@@ -7,7 +7,7 @@ Successfully updated the Sales Analyzer application to support multiple Google G
 ## ✅ Changes Made
 
 ### 1. **Updated Gemini Model**
-- Changed from `gemini-2.0-flash-exp` to stable `gemini-2.0-flash` model
+- Changed from `gemini-2.0-flash-exp` to stable `gemini-2.5-flash` model
 - Updated all API calls to use the stable production model
 
 ### 2. **Round-Robin API Key Manager**
@@ -82,7 +82,7 @@ The system now logs detailed information about API key usage:
 
 ```
 [GeminiAPIKeyManager] Loaded 3 API key(s) for round-robin usage
-[GeminiService] Initialized with 3 API key(s) and gemini-2.0-flash model
+[GeminiService] Initialized with 3 API key(s) and gemini-2.5-flash model
 [GeminiAPIKeyManager] Using API key 1/3 (AIzaSyCKa_...)
 [GeminiAPIKeyManager] Rotated to API key 2/3 for next request
 [GeminiAPIKeyManager] Using API key 2/3 (AIzaSyD...)

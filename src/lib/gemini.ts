@@ -145,7 +145,7 @@ export class GeminiAnalysisService {
     // Get next API key in round-robin fashion and create a new client
     const currentApiKey = apiKeyManager.getNextAPIKey();
     const genAI = new GoogleGenerativeAI(currentApiKey);
-    return genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    return genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
   }
 
   private async makeAPICallWithRetry<T>(
@@ -187,7 +187,7 @@ export class GeminiAnalysisService {
   }
 
   constructor() {
-    console.log(`[GeminiService] Initialized with ${apiKeyManager.getKeyCount()} API key(s) and gemini-2.0-flash model`);
+    console.log(`[GeminiService] Initialized with ${apiKeyManager.getKeyCount()} API key(s) and gemini-2.5-flash model`);
   }
 
   /**

@@ -34,7 +34,7 @@ npm run dev
 - ✅ **Use environment variables** (already configured)
 
 ### Model Information
-- **Model Used**: `gemini-2.0-flash-exp` (Gemini 2.0 Flash Experimental)
+- **Model Used**: `gemini-2.5-flash` (Gemini 2.5 Flash)
 - **Capabilities**: Audio transcription and text analysis
 - **Pricing**: Check [Google AI pricing](https://ai.google.dev/pricing) for current rates
 
@@ -48,7 +48,7 @@ npm run dev
    - Verify the key is active in Google AI Studio
 
 2. **"Model not found" Error**
-   - The `gemini-2.0-flash-exp` model might not be available in your region
+   - The `gemini-2.5-flash` model might not be available in your region
    - Try `gemini-1.5-flash` as an alternative by updating `src/lib/gemini.ts`
 
 3. **Rate Limiting**
