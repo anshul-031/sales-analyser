@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
-import { MemoryStorage } from '@/lib/memory-storage';
+import { FileStorage } from '@/lib/file-storage';
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -19,7 +19,7 @@ export async function DELETE(request: NextRequest) {
       // Delete specific upload
       Logger.info('[Cleanup API] Deleting specific upload:', uploadId);
       
-      const upload = await MemoryStorage.getUploadById(uploadId);
+      const upload = await FileStorage.getUploadById(uploadId);
       if (!upload) {
         return NextResponse.json({
           success: false,
@@ -34,7 +34,7 @@ export async function DELETE(request: NextRequest) {
         }, { status: 403 });
       }
 
-      const deleted = MemoryStorage.deleteUpload(uploadId);
+      const deleted = await FileStorage.deleteUploadedFile(uploadId);
       
       return NextResponse.json({
         success: true,
@@ -45,13 +45,13 @@ export async function DELETE(request: NextRequest) {
       // Delete all completed analysis files for user
       Logger.info('[Cleanup API] Cleaning up completed analyses for user:', userId);
       
-      const analyses = MemoryStorage.getAnalysesByUser(userId);
+      const analyses = await FileStorage.getAnalysesByUser(userId);
       const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
       
       let deletedCount = 0;
       for (const analysis of completedAnalyses) {
         try {
-          MemoryStorage.cleanupCompletedAnalysis(analysis.id);
+          await FileStorage.cleanupCompletedAnalysis(analysis.id);
           deletedCount++;
         } catch (error) {
           Logger.warn('[Cleanup API] Failed to cleanup analysis:', analysis.id, error);
@@ -90,8 +90,8 @@ export async function GET(request: NextRequest) {
 
     Logger.info('[Cleanup API] Getting cleanup status for user:', userId);
 
-    const uploads = MemoryStorage.getUploadsWithAnalyses(userId);
-    const analyses = MemoryStorage.getAnalysesByUser(userId);
+    const uploads = await FileStorage.getUploadsWithAnalyses(userId);
+    const analyses = await FileStorage.getAnalysesByUser(userId);
     
     const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
     const filesWithCompletedAnalysis = uploads.filter(upload => 

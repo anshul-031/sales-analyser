@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
-import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target, Edit3, Save, Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target, Edit3, Save, Plus, ChevronDown, ChevronUp, Loader2, Wind } from 'lucide-react';
 import { formatFileSize, isValidAudioFile } from '@/lib/utils';
 import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/gemini';
-import { MAX_FILE_SIZE, MAX_FILES } from '@/lib/constants';
+import { MAX_FILE_SIZE, MAX_FILES, CHUNK_SIZE } from '@/lib/constants';
+import * as fflate from 'fflate';
 
 interface FileUploadProps {
   onUploadComplete: (response: unknown) => void;
@@ -17,10 +18,13 @@ interface FileUploadProps {
 interface UploadFile {
   file: File;
   id: string;
-  status: 'pending' | 'uploading' | 'success' | 'error';
+  status: 'pending' | 'compressing' | 'uploading' | 'success' | 'error';
   progress?: number;
   error?: string;
   uploadId?: string;
+  compressedSize?: number;
+  compressionTime?: number;
+  isPaused?: boolean;
 }
 
 export default function FileUpload({
@@ -138,38 +142,105 @@ export default function FileUpload({
     setFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const uploadFiles = async () => {
-    if (files.length === 0) return;
-
-    console.log('[FileUpload] Starting upload process for', files.length, 'files');
-    setIsUploading(true);
+  const uploadFile = async (uploadFile: UploadFile) => {
+    let uploadId: string | null = null;
+    let fileKey: string | null = null;
 
     try {
-      const formData = new FormData();
-      files.forEach(({ file }) => {
-        formData.append('files', file);
-      });
-      formData.append('userId', userId);
-      
-      // Add custom analysis parameters
-      const enabledParams = analysisParameters.filter(p => p.enabled);
-      formData.append('customParameters', JSON.stringify(enabledParams));
+        // Step 1: Compress the file
+        setFiles(prev => prev.map(f => f.id === uploadFile.id ? { ...f, status: 'compressing' } : f));
+        const startTime = Date.now();
+        const fileBuffer = await uploadFile.file.arrayBuffer();
+        const compressedData = fflate.compressSync(new Uint8Array(fileBuffer), { level: 9 });
+        const compressionTime = Date.now() - startTime;
 
-      // Update status to uploading
-      setFiles(prev => prev.map(f => ({ ...f, status: 'uploading' as const })));
+        const compressedFile = new File([compressedData], `${uploadFile.file.name}.gz`, { type: 'application/gzip' });
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+        setFiles(prev => prev.map(f => f.id === uploadFile.id ? {
+            ...f,
+            compressedSize: compressedData.length,
+            compressionTime,
+        } : f));
 
-      const result = await response.json();
-      console.log('[FileUpload] Upload response:', result);
+        // Step 2: Start multipart upload
+        const startResponse = await fetch('/api/upload-large', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'start-upload',
+                fileName: compressedFile.name,
+                contentType: compressedFile.type,
+            }),
+        });
 
-      if (result.success) {
-        // Update file statuses based on results
+        const startData = await startResponse.json();
+        if (!startData.success) throw new Error('Failed to start upload');
+        uploadId = startData.uploadId;
+        fileKey = startData.key;
+
+        // Step 3: Get signed URLs for chunks
+        const numChunks = Math.ceil(compressedData.length / CHUNK_SIZE);
+        const urlsResponse = await fetch('/api/upload-large', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'get-upload-urls',
+                key: fileKey,
+                uploadId,
+                parts: numChunks,
+            }),
+        });
+
+        const urlsData = await urlsResponse.json();
+        if (!urlsData.success) throw new Error('Failed to get upload URLs');
+
+        // Step 4: Upload chunks
+        const uploadedParts: { ETag: string, PartNumber: number }[] = [];
+        let uploadedSize = 0;
+
+        for (let i = 0; i < numChunks; i++) {
+            const chunk = compressedData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            const uploadResponse = await fetch(urlsData.urls[i], {
+                method: 'PUT',
+                body: chunk,
+            });
+
+            if (!uploadResponse.ok) throw new Error(`Chunk ${i + 1} upload failed`);
+
+            uploadedParts.push({
+                ETag: uploadResponse.headers.get('ETag')!,
+                PartNumber: i + 1,
+            });
+
+            uploadedSize += chunk.length;
+            const progress = Math.round((uploadedSize / compressedData.length) * 100);
+            setFiles(prev => prev.map(f => f.id === uploadFile.id ? { ...f, status: 'uploading', progress } : f));
+        }
+
+        // Step 5: Complete upload
+        const enabledParams = analysisParameters.filter(p => p.enabled);
+        const completeResponse = await fetch('/api/upload-large', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'complete-upload',
+                key: fileKey,
+                uploadId,
+                parts: uploadedParts,
+                fileName: compressedFile.name,
+                contentType: compressedFile.type,
+                fileSize: compressedFile.size,
+                userId: userId,
+                customParameters: enabledParams,
+                originalContentType: uploadFile.file.type,
+            }),
+        });
+
+        const result = await completeResponse.json();
+        if (!result.success) throw new Error('Failed to complete upload');
+
         setFiles(prev => prev.map(f => {
-          const uploadResult = result.results.find((r: any) => r.filename === f.file.name);
+          const uploadResult = result.results.find((r: any) => r.filename === compressedFile.name);
           if (uploadResult) {
             return {
               ...f,
@@ -181,31 +252,42 @@ export default function FileUpload({
           return { ...f, status: 'error' as const, error: 'Upload result not found' };
         }));
 
-        // Call completion callback with full response (including analysis info)
         onUploadComplete(result);
-        
-        console.log('[FileUpload] Upload completed successfully:', result.summary?.successful || 0, 'files');
-        if (result.analysisStarted) {
-          console.log('[FileUpload] Analysis auto-started for uploaded files');
-        }
-      } else {
-        console.error('[FileUpload] Upload failed:', result.error);
-        setFiles(prev => prev.map(f => ({
-          ...f,
-          status: 'error' as const,
-          error: result.error || 'Upload failed'
-        })));
-      }
+
     } catch (error) {
-      console.error('[FileUpload] Upload error:', error);
-      setFiles(prev => prev.map(f => ({
-        ...f,
-        status: 'error' as const,
-        error: 'Network error occurred'
-      })));
-    } finally {
-      setIsUploading(false);
+        console.error('[FileUpload] Error processing file:', uploadFile.file.name, error);
+        setFiles(prev => prev.map(f => f.id === uploadFile.id ? {
+            ...f,
+            status: 'error',
+            error: 'Failed to compress or upload file'
+        } : f));
+
+        if (uploadId && fileKey) {
+            await fetch('/api/upload-large', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'abort-upload',
+                    key: fileKey,
+                    uploadId,
+                }),
+            });
+        }
     }
+};
+
+  const uploadFiles = async () => {
+    if (files.length === 0) return;
+
+    console.log('[FileUpload] Starting upload process for', files.length, 'files');
+    setIsUploading(true);
+
+    const filesToUpload = files.filter(f => f.status === 'pending');
+    for (const file of filesToUpload) {
+      await uploadFile(file);
+    }
+
+    setIsUploading(false);
   };
 
   const clearSuccessfulFiles = () => {
@@ -218,8 +300,10 @@ export default function FileUpload({
         return <CheckCircle className="w-4 h-4 text-green-500" />;
       case 'error':
         return <AlertCircle className="w-4 h-4 text-red-500" />;
+      case 'compressing':
+        return <Wind className="w-4 h-4 text-blue-500 animate-pulse" />;
       case 'uploading':
-        return <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
+        return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
       default:
         return <FileAudio className="w-4 h-4 text-gray-500" />;
     }
@@ -315,14 +399,30 @@ export default function FileUpload({
                     </p>
                     <p className="text-xs text-gray-500">
                       {formatFileSize(fileItem.file.size)}
+                      {fileItem.compressedSize && (
+                        <span className="ml-2 text-xs text-green-600">
+                          (Compressed: {formatFileSize(fileItem.compressedSize)})
+                        </span>
+                      )}
                     </p>
                     {fileItem.error && (
                       <p className="text-xs text-red-500 mt-1">{fileItem.error}</p>
                     )}
+                    {fileItem.status === 'compressing' && (
+                      <p className="text-xs text-blue-500 mt-1">Compressing...</p>
+                    )}
+                     {fileItem.status === 'uploading' && fileItem.progress !== undefined && (
+                      <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                        <div
+                          className="bg-blue-600 h-1.5 rounded-full"
+                          style={{ width: `${fileItem.progress}%` }}
+                        ></div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 
-                {fileItem.status === 'pending' && (
+                {(fileItem.status === 'pending' || fileItem.status === 'error') && (
                   <button
                     onClick={() => removeFile(fileItem.id)}
                     className="p-1 text-gray-400 hover:text-red-500"

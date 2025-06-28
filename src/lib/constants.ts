@@ -6,10 +6,13 @@
 // File Upload Configuration
 export const FILE_UPLOAD_CONFIG = {
   // Maximum file size in bytes (5MB)
-  MAX_FILE_SIZE: 5 * 1024 * 1024,
+  MAX_FILE_SIZE: 10 * 1024 * 1024 * 1024, // 10GB
   
   // Maximum number of files per upload
   MAX_FILES: 10,
+
+  // Chunk size for large file uploads (5MB)
+  CHUNK_SIZE: 5 * 1024 * 1024,
   
   // Supported audio file types
   ALLOWED_MIME_TYPES: [
@@ -45,3 +48,4 @@ export const API_CONFIG = {
 // Export commonly used values for convenience
 export const MAX_FILE_SIZE = FILE_UPLOAD_CONFIG.MAX_FILE_SIZE;
 export const MAX_FILES = FILE_UPLOAD_CONFIG.MAX_FILES;
+export const CHUNK_SIZE = FILE_UPLOAD_CONFIG.CHUNK_SIZE;

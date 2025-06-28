@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
-import { MemoryStorage } from '@/lib/memory-storage';
+import { FileStorage } from '@/lib/file-storage';
 import { geminiService } from '@/lib/gemini';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import * as fflate from 'fflate';
+
+const r2 = new S3Client({
+  region: 'auto',
+  endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,7 +66,7 @@ export async function POST(request: NextRequest) {
         Logger.info('[Analyze API] Processing upload:', uploadId);
 
         // Get upload from memory
-        const upload = await MemoryStorage.getUploadById(uploadId);
+        const upload = await FileStorage.getUploadById(uploadId);
         if (!upload) {
           Logger.error('[Analyze API] Upload not found:', uploadId);
           failedCount++;
@@ -69,7 +80,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Create analysis record
-        const analysis = await MemoryStorage.createAnalysis({
+        const analysis = await FileStorage.createAnalysis({
           status: 'PENDING',
           analysisType,
           customPrompt,
@@ -138,7 +149,7 @@ export async function GET(request: NextRequest) {
 
     if (analysisId) {
       // Get specific analysis
-      const analysis = await MemoryStorage.getAnalysisById(analysisId);
+      const analysis = await FileStorage.getAnalysisById(analysisId);
       if (!analysis || analysis.userId !== userId) {
         return NextResponse.json({
           success: false,
@@ -148,7 +159,7 @@ export async function GET(request: NextRequest) {
       analyses = [analysis];
     } else {
       // Get all analyses for user with upload information
-      analyses = await MemoryStorage.getAnalysesWithUploads(userId);
+      analyses = await FileStorage.getAnalysesWithUploads(userId);
     }
 
     return NextResponse.json({
@@ -167,22 +178,31 @@ export async function GET(request: NextRequest) {
 }
 
 // Background processing function
-async function processAnalysisInBackground(analysisId: string, upload: { filename: string; fileBuffer: Buffer; mimeType: string }) {
+async function processAnalysisInBackground(analysisId: string, upload: { id: string, fileUrl: string, mimeType: string, filename: string }) {
   try {
     Logger.info('[Analyze API] Processing analysis in background:', analysisId);
 
     // Update status to processing
-    await MemoryStorage.updateAnalysis(analysisId, {
+    await FileStorage.updateAnalysis(analysisId, {
       status: 'PROCESSING'
     });
 
-    Logger.info('[Analyze API] Reading audio file from memory for:', upload.filename);
+    Logger.info('[Analyze API] Reading audio file from R2 for:', upload.filename);
     
-    // Get audio buffer from memory (no file system access)
-    const audioBuffer = upload.fileBuffer;
+    const { Body } = await r2.send(new GetObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME!,
+        Key: upload.fileUrl,
+    }));
+
+    if (!Body) {
+        throw new Error('File not found in R2');
+    }
+
+    const compressedBuffer = Buffer.from(await Body.transformToByteArray());
+    const audioBuffer = Buffer.from(fflate.decompressSync(compressedBuffer));
     
     // Determine MIME type from file extension
-    const extension = upload.filename.toLowerCase().split('.').pop();
+    const extension = upload.filename.toLowerCase().split('.').pop()?.replace(/.gz$/, '');
     let mimeType = upload.mimeType;
     
     if (!mimeType) {
@@ -201,13 +221,13 @@ async function processAnalysisInBackground(analysisId: string, upload: { filenam
     Logger.info('[Analyze API] Starting AI analysis for:', upload.filename);
 
     // Get analysis from memory to check type
-    const analysis = await MemoryStorage.getAnalysisById(analysisId);
+    const analysis = await FileStorage.getAnalysisById(analysisId);
     if (!analysis) {
       throw new Error('Analysis not found');
     }
 
     // First transcribe the audio
-    const transcription = await geminiService.transcribeAudio(audioBuffer, mimeType);
+    const transcription = await geminiService.transcribeAudio(audioBuffer, upload.mimeType);
     
     // Then analyze based on type
     let analysisResult;
@@ -227,14 +247,14 @@ async function processAnalysisInBackground(analysisId: string, upload: { filenam
     // Clean up the uploaded file after successful analysis (if enabled)
     const autoDeleteFiles = process.env.AUTO_DELETE_FILES === 'true';
     if (autoDeleteFiles) {
-      await MemoryStorage.cleanupCompletedAnalysis(analysisId);
+      await FileStorage.cleanupCompletedAnalysis(analysisId);
       Logger.info('[Analyze API] Auto-cleanup enabled - deleted uploaded file');
     } else {
       Logger.info('[Analyze API] Auto-cleanup disabled - keeping uploaded file');
     }
 
     // Update analysis with results
-    await MemoryStorage.updateAnalysis(analysisId, {
+    await FileStorage.updateAnalysis(analysisId, {
       analysisResult,
       status: 'COMPLETED'
     });
@@ -245,7 +265,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { filenam
     Logger.error('[Analyze API] Background analysis failed for', analysisId + ':', error);
     
     // Update analysis with error
-    await MemoryStorage.updateAnalysis(analysisId, {
+    await FileStorage.updateAnalysis(analysisId, {
       status: 'FAILED',
       errorMessage: error instanceof Error ? error.message : 'Unknown error occurred'
     });

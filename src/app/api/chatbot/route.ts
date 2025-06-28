@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { geminiService } from '@/lib/gemini';
-import { MemoryStorage } from '@/lib/memory-storage';
+import { FileStorage } from '@/lib/file-storage';
 import { Logger } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
@@ -23,9 +23,9 @@ export async function POST(request: NextRequest) {
 
     if (analysisId) {
       // Get specific analysis data
-      const analysis = MemoryStorage.getAnalysisById(analysisId);
+      const analysis = await FileStorage.getAnalysisById(analysisId);
       if (analysis && analysis.userId === userId) {
-        const upload = MemoryStorage.getUploadById(analysis.uploadId);
+        const upload = await FileStorage.getUploadById(analysis.uploadId);
         contextData = `
 **Call Recording: ${upload?.originalName || 'Unknown'}**
 **Analysis Type:** ${analysis.analysisType}
@@ -45,9 +45,9 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
       }
     } else if (uploadId) {
       // Get specific upload data with its analyses
-      const upload = MemoryStorage.getUploadById(uploadId);
+      const upload = await FileStorage.getUploadById(uploadId);
       if (upload && upload.userId === userId) {
-        const analyses = MemoryStorage.getAnalysesByUploadId(uploadId);
+        const analyses = await FileStorage.getAnalysesByUploadId(uploadId);
         const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
         
         if (completedAnalyses.length > 0) {
@@ -81,7 +81,7 @@ ${JSON.stringify(latestAnalysis.analysisResult, null, 2)}
       }
     } else {
       // Get all user's data as context
-      const analysesWithUploads = MemoryStorage.getAnalysesWithUploads(userId);
+      const analysesWithUploads = await FileStorage.getAnalysesWithUploads(userId);
       const completedAnalyses = analysesWithUploads.filter(a => a.status === 'COMPLETED');
       
       if (completedAnalyses.length === 0) {
@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user's available data for chatbot context
-    const analysesWithUploads = MemoryStorage.getAnalysesWithUploads(userId);
+    const analysesWithUploads = await FileStorage.getAnalysesWithUploads(userId);
     const completedAnalyses = analysesWithUploads.filter(a => a.status === 'COMPLETED');
 
     const availableContext = completedAnalyses.map(analysis => ({

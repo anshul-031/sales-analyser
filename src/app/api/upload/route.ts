@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
-import { MemoryStorage } from '@/lib/memory-storage';
+import { FileStorage } from '@/lib/file-storage';
 import { FILE_UPLOAD_CONFIG } from '@/lib/constants';
 
 // File validation constants - use centralized config with env override
@@ -78,13 +78,16 @@ export async function POST(request: NextRequest) {
         
         Logger.info('[Upload API] File loaded into memory:', file.name);
 
-        // Store file metadata and buffer in memory
-        const uploadRecord = MemoryStorage.createUpload({
+        // This route is now deprecated for large files, but for smaller files,
+        // we can still save them directly to R2 without chunking.
+        // For simplicity, we will just use the file-storage which now points to R2.
+        // The `fileBuffer` is not used anymore.
+        const uploadRecord = await FileStorage.createUpload({
           filename: file.name,
           originalName: file.name,
           fileSize: file.size,
           mimeType: file.type,
-          fileBuffer: buffer,
+          fileUrl: `uploads/${userId}/${file.name}`, // Example path, adjust as needed
           userId: userId,
         });
 
@@ -222,7 +225,7 @@ export async function GET(request: NextRequest) {
     Logger.info('[Upload API] Fetching uploads for user:', userId);
 
     // Get uploads with analysis information from memory
-    const uploads = MemoryStorage.getUploadsWithAnalyses(userId);
+    const uploads = FileStorage.getUploadsWithAnalyses(userId);
 
     return NextResponse.json({
       success: true,

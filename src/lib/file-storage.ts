@@ -1,6 +1,16 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { Logger } from './utils';
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
+
+const r2 = new S3Client({
+  region: 'auto',
+  endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+});
 
 // Define types for our file-based storage
 export interface StoredUpload {
@@ -17,8 +27,9 @@ export interface StoredUpload {
 export interface StoredAnalysis {
   id: string;
   status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-  analysisType: 'default' | 'custom';
+  analysisType: 'default' | 'custom' | 'parameters';
   customPrompt?: string;
+  customParameters?: any[];
   transcription?: string;
   analysisResult?: any;
   errorMessage?: string;
@@ -186,12 +197,17 @@ export class FileStorage {
         return false;
       }
 
-      // Delete the physical file
+      // Delete the object from R2
       try {
-        await fs.unlink(upload.fileUrl);
-        Logger.info('[FileStorage] Deleted file:', upload.fileUrl);
-      } catch (fileError) {
-        Logger.warn('[FileStorage] File already deleted or not found:', upload.fileUrl);
+        await r2.send(new DeleteObjectCommand({
+            Bucket: process.env.R2_BUCKET_NAME!,
+            Key: upload.fileUrl, // fileUrl now stores the R2 key
+        }));
+        Logger.info('[FileStorage] Deleted file from R2:', upload.fileUrl);
+      } catch (r2Error) {
+        Logger.error('[FileStorage] Error deleting file from R2:', r2Error);
+        // We might not want to fail the whole process if R2 deletion fails,
+        // but we'll still remove the record.
       }
 
       // Remove from uploads.json
@@ -232,10 +248,13 @@ export class FileStorage {
     // Delete physical files
     for (const upload of uploads) {
       try {
-        await fs.unlink(upload.fileUrl);
-        Logger.info('[FileStorage] Deleted file:', upload.fileUrl);
+        await r2.send(new DeleteObjectCommand({
+            Bucket: process.env.R2_BUCKET_NAME!,
+            Key: upload.fileUrl,
+        }));
+        Logger.info('[FileStorage] Deleted file from R2:', upload.fileUrl);
       } catch (error) {
-        Logger.warn('[FileStorage] Could not delete file:', upload.fileUrl);
+        Logger.warn('[FileStorage] Could not delete file from R2:', upload.fileUrl, error);
       }
     }
 
