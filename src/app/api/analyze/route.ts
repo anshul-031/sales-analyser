@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
           customParameters: analysisType === 'parameters' ? customParameters : undefined,
           userId,
           uploadId,
-        });
+        }, upload);
 
         analyses.push(analysis);
         successCount++;
@@ -244,6 +244,12 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
 
     Logger.info('[Analyze API] Analysis completed successfully');
 
+    // Update analysis with results
+    await FileStorage.updateAnalysis(analysisId, {
+      analysisResult,
+      status: 'COMPLETED'
+    });
+
     // Clean up the uploaded file after successful analysis (if enabled)
     const autoDeleteFiles = process.env.AUTO_DELETE_FILES === 'true';
     if (autoDeleteFiles) {
@@ -252,12 +258,6 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     } else {
       Logger.info('[Analyze API] Auto-cleanup disabled - keeping uploaded file');
     }
-
-    // Update analysis with results
-    await FileStorage.updateAnalysis(analysisId, {
-      analysisResult,
-      status: 'COMPLETED'
-    });
 
     Logger.info('[Analyze API] Background analysis completed for:', analysisId);
 
@@ -269,5 +269,14 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       status: 'FAILED',
       errorMessage: error instanceof Error ? error.message : 'Unknown error occurred'
     });
+
+    // Clean up the uploaded file after failed analysis (if enabled)
+    const autoDeleteFiles = process.env.AUTO_DELETE_FILES === 'true';
+    if (autoDeleteFiles) {
+      await FileStorage.cleanupFailedAnalysis(analysisId);
+      Logger.info('[Analyze API] Auto-cleanup enabled - deleted uploaded file after failure');
+    } else {
+      Logger.info('[Analyze API] Auto-cleanup disabled - keeping uploaded file after failure');
+    }
   }
 }

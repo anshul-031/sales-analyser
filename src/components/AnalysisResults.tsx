@@ -26,7 +26,7 @@ interface Analysis {
     originalName: string;
     fileSize: number;
     uploadedAt: string;
-  };
+  } | null;
 }
 
 export default function AnalysisResults({ userId, analysisIds, onRefresh }: AnalysisResultsProps) {
@@ -112,7 +112,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
 
   const downloadAnalysis = (analysis: Analysis) => {
     const data = {
-      fileName: analysis.upload.originalName,
+      fileName: analysis.upload?.originalName || 'N/A',
       analysisType: analysis.analysisType,
       transcription: analysis.transcription,
       analysisResult: analysis.analysisResult,
@@ -124,7 +124,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `analysis_${analysis.upload.originalName}_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `analysis_${analysis.upload?.originalName || 'deleted'}_${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -493,12 +493,12 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                   </div>
                   
                   <h3 className="font-semibold text-gray-800 mb-2 text-lg">
-                    {analysis.upload.originalName}
+                    {analysis.upload?.originalName || 'Original file deleted'}
                   </h3>
                   
                   <p className="text-sm text-gray-600">
-                    Created: {formatDate(new Date(analysis.createdAt))} • 
-                    File size: {Math.round(analysis.upload.fileSize / 1024)} KB
+                    Created: {formatDate(new Date(analysis.createdAt))} •
+                    File size: {analysis.upload ? Math.round(analysis.upload.fileSize / 1024) : 'Unknown'} KB
                   </p>
 
                   {analysis.errorMessage && (
@@ -514,11 +514,20 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setActiveChatbot({
-                            analysisId: analysis.id,
-                            uploadId: analysis.upload.id
-                          });
+                          if (analysis.upload) {
+                            if (analysis.upload) {
+                              if (analysis.upload) {
+                                if (analysis.upload) {
+                                  setActiveChatbot({
+                                    analysisId: analysis.id,
+                                    uploadId: analysis.upload.id
+                                  });
+                                }
+                              }
+                            }
+                          }
                         }}
+                        disabled={!analysis.upload}
                         className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
                         title="Ask AI about this analysis"
                       >
@@ -530,7 +539,8 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                           e.stopPropagation();
                           downloadAnalysis(analysis);
                         }}
-                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        disabled={!analysis.upload}
+                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Download Analysis"
                       >
                         <Download className="w-5 h-5" />

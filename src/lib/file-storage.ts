@@ -37,6 +37,7 @@ export interface StoredAnalysis {
   updatedAt: string;
   userId: string;
   uploadId: string;
+  upload: StoredUpload;
 }
 
 const DATA_DIR = './data';
@@ -99,7 +100,7 @@ export class FileStorage {
   }
 
   // Analysis operations
-  static async createAnalysis(analysis: Omit<StoredAnalysis, 'id' | 'createdAt' | 'updatedAt'>): Promise<StoredAnalysis> {
+  static async createAnalysis(analysis: Omit<StoredAnalysis, 'id' | 'createdAt' | 'updatedAt' | 'upload'>, upload: StoredUpload): Promise<StoredAnalysis> {
     const analyses = await readJsonFile<StoredAnalysis>(ANALYSES_FILE);
     
     const newAnalysis: StoredAnalysis = {
@@ -107,6 +108,7 @@ export class FileStorage {
       id: `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      upload,
     };
     
     analyses.push(newAnalysis);
@@ -175,17 +177,12 @@ export class FileStorage {
     });
   }
 
-  static async getAnalysesWithUploads(userId: string): Promise<(StoredAnalysis & { upload: StoredUpload | null })[]> {
+  static async getAnalysesWithUploads(userId: string): Promise<StoredAnalysis[]> {
     const analyses = await this.getAnalysesByUser(userId);
-    const allUploads = await readJsonFile<StoredUpload>(UPLOADS_FILE);
-    
-    return analyses.map(analysis => {
-      const upload = allUploads.find(u => u.id === analysis.uploadId) || null;
-      return {
-        ...analysis,
-        upload,
-      };
-    });
+    return analyses.map(analysis => ({
+      ...analysis,
+      upload: analysis.upload || null,
+    }));
   }
 
   // File cleanup methods
@@ -237,6 +234,23 @@ export class FileStorage {
       }
     } catch (error) {
       Logger.error('[FileStorage] Error during cleanup:', error);
+    }
+  }
+
+  static async cleanupFailedAnalysis(analysisId: string): Promise<void> {
+    try {
+      const analysis = await this.getAnalysisById(analysisId);
+      if (!analysis || analysis.status !== 'FAILED') {
+        return;
+      }
+
+      // Delete the uploaded file after failed analysis
+      const deleted = await this.deleteUploadedFile(analysis.uploadId);
+      if (deleted) {
+        Logger.info('[FileStorage] Cleaned up file for failed analysis:', analysisId);
+      }
+    } catch (error) {
+      Logger.error('[FileStorage] Error during cleanup for failed analysis:', error);
     }
   }
 
