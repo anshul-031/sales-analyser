@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 import { Logger } from './utils';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
@@ -40,7 +41,7 @@ export interface StoredAnalysis {
   upload: StoredUpload;
 }
 
-const DATA_DIR = './data';
+const DATA_DIR = path.join(os.tmpdir(), 'data');
 const UPLOADS_FILE = path.join(DATA_DIR, 'uploads.json');
 const ANALYSES_FILE = path.join(DATA_DIR, 'analyses.json');
 
