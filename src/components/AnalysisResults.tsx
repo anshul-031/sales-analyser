@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Download, Eye, EyeOff, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Target, Lightbulb, Star, Award, MessageCircle, FileText } from 'lucide-react';
+import { RefreshCw, Download, Eye, EyeOff, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Target, Lightbulb, Star, Award, MessageCircle, FileText, Heart, Frown, Smile, Meh, Users, Brain, Activity, Gauge } from 'lucide-react';
 import { formatDate, getStatusColor, getStatusIcon } from '@/lib/utils';
 import Chatbot from './Chatbot';
 
@@ -35,12 +35,29 @@ interface TranscriptionSegment {
   text: string;
   start_time?: number;
   end_time?: number;
+  tone?: string;
+  sentiment?: string;
+  confidence_level?: string;
+}
+
+interface SpeakerProfile {
+  dominant_sentiment: string;
+  dominant_tone: string;
+  engagement_level: string;
+  communication_style: string;
+}
+
+interface ConversationSummary {
+  overall_sentiment: string;
+  dominant_tones: string[];
+  speaker_profiles: { [key: string]: SpeakerProfile };
 }
 
 interface ParsedTranscription {
   original_language: string;
   diarized_transcription: TranscriptionSegment[];
   english_translation?: TranscriptionSegment[];
+  conversation_summary?: ConversationSummary;
 }
 
 export default function AnalysisResults({ userId, analysisIds, onRefresh }: AnalysisResultsProps) {
@@ -185,6 +202,55 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
     return new Date(seconds * 1000).toISOString().substr(14, 5);
   };
 
+  const getSentimentStyle = (sentiment: string) => {
+    switch (sentiment?.toLowerCase()) {
+      case 'positive':
+        return { icon: Smile, color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-200' };
+      case 'negative':
+        return { icon: Frown, color: 'text-red-600', bg: 'bg-red-100', border: 'border-red-200' };
+      case 'neutral':
+        return { icon: Meh, color: 'text-gray-600', bg: 'bg-gray-100', border: 'border-gray-200' };
+      case 'mixed':
+        return { icon: Activity, color: 'text-yellow-600', bg: 'bg-yellow-100', border: 'border-yellow-200' };
+      default:
+        return { icon: Meh, color: 'text-gray-600', bg: 'bg-gray-100', border: 'border-gray-200' };
+    }
+  };
+
+  const getToneStyle = (tone: string) => {
+    switch (tone?.toLowerCase()) {
+      case 'professional':
+      case 'confident':
+        return { color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' };
+      case 'friendly':
+      case 'enthusiastic':
+        return { color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' };
+      case 'aggressive':
+      case 'frustrated':
+        return { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' };
+      case 'uncertain':
+        return { color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200' };
+      case 'calm':
+      case 'neutral':
+        return { color: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200' };
+      default:
+        return { color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' };
+    }
+  };
+
+  const getConfidenceStyle = (confidence: string) => {
+    switch (confidence?.toLowerCase()) {
+      case 'high':
+        return { color: 'text-green-600', bg: 'bg-green-50' };
+      case 'medium':
+        return { color: 'text-yellow-600', bg: 'bg-yellow-50' };
+      case 'low':
+        return { color: 'text-red-600', bg: 'bg-red-50' };
+      default:
+        return { color: 'text-gray-600', bg: 'bg-gray-50' };
+    }
+  };
+
   const renderTranscription = (transcription: string | undefined) => {
     const parsedData = parseTranscription(transcription);
 
@@ -202,17 +268,88 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
       JSON.stringify(parsedData.diarized_transcription) !== JSON.stringify(parsedData.english_translation);
 
     return (
-      <div className="space-y-4">
-        <p className="text-sm text-gray-600">
-          Original Language: <span className="font-semibold uppercase">{parsedData.original_language}</span>
-        </p>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600">Original Language:</span>
+            <span className="font-semibold uppercase text-blue-600">{parsedData.original_language}</span>
+          </div>
+          
+          {parsedData.conversation_summary && (
+            <>
+              <div className="flex items-center space-x-2">
+                <Activity className="w-4 h-4 text-purple-600" />
+                <span className="text-sm text-gray-600">Overall Sentiment:</span>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSentimentStyle(parsedData.conversation_summary.overall_sentiment).bg} ${getSentimentStyle(parsedData.conversation_summary.overall_sentiment).color}`}>
+                  {parsedData.conversation_summary.overall_sentiment}
+                </span>
+              </div>
+              
+              {parsedData.conversation_summary.dominant_tones && parsedData.conversation_summary.dominant_tones.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  <Brain className="w-4 h-4 text-indigo-600" />
+                  <span className="text-sm text-gray-600">Dominant Tones:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {parsedData.conversation_summary.dominant_tones.map((tone, idx) => (
+                      <span key={idx} className={`px-2 py-1 rounded-full text-xs font-medium ${getToneStyle(tone).bg} ${getToneStyle(tone).color}`}>
+                        {tone}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Speaker Profiles */}
+        {parsedData.conversation_summary?.speaker_profiles && Object.keys(parsedData.conversation_summary.speaker_profiles).length > 0 && (
+          <div className="bg-blue-50 rounded-lg p-4">
+            <div className="flex items-center space-x-2 mb-3">
+              <Users className="w-5 h-5 text-blue-600" />
+              <h5 className="font-semibold text-blue-800">Speaker Profiles</h5>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Object.entries(parsedData.conversation_summary.speaker_profiles).map(([speaker, profile]) => (
+                <div key={speaker} className="bg-white rounded-lg p-3 border border-blue-200">
+                  <h6 className="font-semibold text-gray-800 mb-2">{speaker}</h6>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Sentiment:</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSentimentStyle(profile.dominant_sentiment).bg} ${getSentimentStyle(profile.dominant_sentiment).color}`}>
+                        {profile.dominant_sentiment}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Tone:</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getToneStyle(profile.dominant_tone).bg} ${getToneStyle(profile.dominant_tone).color}`}>
+                        {profile.dominant_tone}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Engagement:</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getConfidenceStyle(profile.engagement_level).bg} ${getConfidenceStyle(profile.engagement_level).color}`}>
+                        {profile.engagement_level}
+                      </span>
+                    </div>
+                    <div className="pt-2 border-t border-gray-200">
+                      <span className="text-gray-600 text-xs">Style:</span>
+                      <p className="text-gray-700 text-xs mt-1">{profile.communication_style}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className={`grid ${showTranslation ? 'grid-cols-1 md:grid-cols-2 gap-6' : 'grid-cols-1'}`}>
           <div>
             {showTranslation && <h5 className="font-semibold mb-2 text-gray-700">Original Transcription</h5>}
             <div className="space-y-4 bg-white p-4 rounded-lg border">
               {parsedData.diarized_transcription.map((segment, index) => (
-                <div key={index} className="text-sm flex flex-col">
-                  <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
+                <div key={index} className="text-sm">
+                  <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
                     <span className="font-bold text-gray-800">{segment.speaker}</span>
                     {segment.start_time !== undefined && segment.end_time !== undefined && (
                       <span>
@@ -220,7 +357,38 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                       </span>
                     )}
                   </div>
-                  <p className="pl-2 border-l-2 border-blue-200">{segment.text}</p>
+                  
+                  <p className="pl-2 border-l-2 border-blue-200 mb-2">{segment.text}</p>
+                  
+                  {/* Tone and Sentiment indicators */}
+                  {(segment.tone || segment.sentiment || segment.confidence_level) && (
+                    <div className="flex flex-wrap gap-2 mt-2 pl-2">
+                      {segment.sentiment && (
+                        <div className="flex items-center space-x-1">
+                          <span className={`w-2 h-2 rounded-full ${getSentimentStyle(segment.sentiment).bg}`}></span>
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${getSentimentStyle(segment.sentiment).bg} ${getSentimentStyle(segment.sentiment).color}`}>
+                            {segment.sentiment}
+                          </span>
+                        </div>
+                      )}
+                      {segment.tone && (
+                        <div className="flex items-center space-x-1">
+                          <span className={`w-2 h-2 rounded-full ${getToneStyle(segment.tone).bg}`}></span>
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${getToneStyle(segment.tone).bg} ${getToneStyle(segment.tone).color}`}>
+                            {segment.tone}
+                          </span>
+                        </div>
+                      )}
+                      {segment.confidence_level && (
+                        <div className="flex items-center space-x-1">
+                          <Gauge className="w-3 h-3 text-gray-500" />
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${getConfidenceStyle(segment.confidence_level).bg} ${getConfidenceStyle(segment.confidence_level).color}`}>
+                            {segment.confidence_level}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -230,8 +398,8 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
               <h5 className="font-semibold mb-2 text-gray-700">English Translation</h5>
               <div className="space-y-4 bg-white p-4 rounded-lg border">
                 {parsedData.english_translation.map((segment, index) => (
-                  <div key={index} className="text-sm flex flex-col">
-                    <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
+                  <div key={index} className="text-sm">
+                    <div className="flex justify-between items-center text-xs text-gray-500 mb-2">
                       <span className="font-bold text-gray-800">{segment.speaker}</span>
                       {segment.start_time !== undefined && segment.end_time !== undefined && (
                         <span>
@@ -239,7 +407,38 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                         </span>
                       )}
                     </div>
-                    <p className="pl-2 border-l-2 border-green-200">{segment.text}</p>
+                    
+                    <p className="pl-2 border-l-2 border-green-200 mb-2">{segment.text}</p>
+                    
+                    {/* Tone and Sentiment indicators */}
+                    {(segment.tone || segment.sentiment || segment.confidence_level) && (
+                      <div className="flex flex-wrap gap-2 mt-2 pl-2">
+                        {segment.sentiment && (
+                          <div className="flex items-center space-x-1">
+                            <span className={`w-2 h-2 rounded-full ${getSentimentStyle(segment.sentiment).bg}`}></span>
+                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getSentimentStyle(segment.sentiment).bg} ${getSentimentStyle(segment.sentiment).color}`}>
+                              {segment.sentiment}
+                            </span>
+                          </div>
+                        )}
+                        {segment.tone && (
+                          <div className="flex items-center space-x-1">
+                            <span className={`w-2 h-2 rounded-full ${getToneStyle(segment.tone).bg}`}></span>
+                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getToneStyle(segment.tone).bg} ${getToneStyle(segment.tone).color}`}>
+                              {segment.tone}
+                            </span>
+                          </div>
+                        )}
+                        {segment.confidence_level && (
+                          <div className="flex items-center space-x-1">
+                            <Gauge className="w-3 h-3 text-gray-500" />
+                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${getConfidenceStyle(segment.confidence_level).bg} ${getConfidenceStyle(segment.confidence_level).color}`}>
+                              {segment.confidence_level}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

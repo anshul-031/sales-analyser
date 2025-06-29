@@ -137,6 +137,19 @@ export const DEFAULT_ANALYSIS_PARAMETERS = {
     5. Areas of strength and improvement
     6. Likelihood of deal progression
     Provide an overall score from 1-10 and detailed recommendations.`
+  },
+  'emotional_intelligence': {
+    name: 'Emotional Intelligence & Tone Analysis',
+    description: 'Evaluate emotional awareness and tone management throughout the call',
+    prompt: `Analyze the emotional intelligence and tone management in this sales call:
+    1. Emotional awareness and empathy demonstrated
+    2. Tone consistency and appropriateness
+    3. Ability to read and respond to customer emotions
+    4. Management of difficult or tense moments
+    5. Building emotional connection with the customer
+    6. Sentiment progression throughout the conversation
+    7. Professional composure under pressure
+    Provide a score from 1-10 and specific examples of emotional intelligence in action.`
   }
 };
 
@@ -203,18 +216,48 @@ export class GeminiAnalysisService {
 3.  **Timestamps**: Include start and end times for each speaker segment.
 4.  **Translation**: If the original language is not English, provide an English translation of the transcription.
 5.  **Language Identification**: Identify the original language of the conversation.
+6.  **Tone Analysis**: Analyze the tone of each speaker segment (e.g., "professional", "friendly", "aggressive", "uncertain", "confident", "frustrated", "enthusiastic", "calm").
+7.  **Sentiment Analysis**: Determine the sentiment of each speaker segment (e.g., "positive", "negative", "neutral", "mixed").
 
 Return the result in a JSON object with the following structure:
 {
   "original_language": "<identified language>",
   "diarized_transcription": [
-    { "speaker": "<speaker_label>", "text": "<transcribed_text>", "start_time": <start_seconds>, "end_time": <end_seconds> },
+    { 
+      "speaker": "<speaker_label>", 
+      "text": "<transcribed_text>", 
+      "start_time": <start_seconds>, 
+      "end_time": <end_seconds>,
+      "tone": "<tone_analysis>",
+      "sentiment": "<sentiment_analysis>",
+      "confidence_level": "<low|medium|high>"
+    },
     ...
   ],
   "english_translation": [
-    { "speaker": "<speaker_label>", "text": "<translated_text>", "start_time": <start_seconds>, "end_time": <end_seconds> },
+    { 
+      "speaker": "<speaker_label>", 
+      "text": "<translated_text>", 
+      "start_time": <start_seconds>, 
+      "end_time": <end_seconds>,
+      "tone": "<tone_analysis>",
+      "sentiment": "<sentiment_analysis>",
+      "confidence_level": "<low|medium|high>"
+    },
     ...
-  ]
+  ],
+  "conversation_summary": {
+    "overall_sentiment": "<overall_conversation_sentiment>",
+    "dominant_tones": ["<tone1>", "<tone2>"],
+    "speaker_profiles": {
+      "<speaker_label>": {
+        "dominant_sentiment": "<sentiment>",
+        "dominant_tone": "<tone>",
+        "engagement_level": "<low|medium|high>",
+        "communication_style": "<description>"
+      }
+    }
+  }
 }
 
 If the original language is English, the "english_translation" field should be the same as "diarized_transcription".`;
@@ -247,8 +290,25 @@ If the original language is English, the "english_translation" field should be t
       // Fallback for non-JSON responses
       return JSON.stringify({
         original_language: "unknown",
-        diarized_transcription: [{ speaker: "unknown", text: transcription }],
-        english_translation: [{ speaker: "unknown", text: "Translation not available" }]
+        diarized_transcription: [{ 
+          speaker: "unknown", 
+          text: transcription,
+          tone: "neutral",
+          sentiment: "neutral",
+          confidence_level: "low"
+        }],
+        english_translation: [{ 
+          speaker: "unknown", 
+          text: "Translation not available",
+          tone: "neutral",
+          sentiment: "neutral",
+          confidence_level: "low"
+        }],
+        conversation_summary: {
+          overall_sentiment: "neutral",
+          dominant_tones: ["neutral"],
+          speaker_profiles: {}
+        }
       });
     } catch (error) {
       console.error('[GeminiService] Transcription error:', error);
