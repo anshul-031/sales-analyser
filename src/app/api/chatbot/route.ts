@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { geminiService } from '@/lib/gemini';
-import { FileStorage } from '@/lib/file-storage';
+import { DatabaseStorage } from '@/lib/db';
 import { Logger } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
@@ -23,9 +23,9 @@ export async function POST(request: NextRequest) {
 
     if (analysisId) {
       // Get specific analysis data
-      const analysis = await FileStorage.getAnalysisById(analysisId);
+      const analysis = await DatabaseStorage.getAnalysisById(analysisId);
       if (analysis && analysis.userId === userId) {
-        const upload = await FileStorage.getUploadById(analysis.uploadId);
+        const upload = await DatabaseStorage.getUploadById(analysis.uploadId);
         contextData = `
 **Call Recording: ${upload?.originalName || 'Unknown'}**
 **Analysis Type:** ${analysis.analysisType}
@@ -45,9 +45,9 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
       }
     } else if (uploadId) {
       // Get specific upload data with its analyses
-      const upload = await FileStorage.getUploadById(uploadId);
+      const upload = await DatabaseStorage.getUploadById(uploadId);
       if (upload && upload.userId === userId) {
-        const analyses = await FileStorage.getAnalysesByUploadId(uploadId);
+        const analyses = await DatabaseStorage.getAnalysesByUploadId(uploadId);
         const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
         
         if (completedAnalyses.length > 0) {
@@ -56,7 +56,7 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
           
           contextData = `
 **Call Recording: ${upload.originalName}**
-**File Size:** ${Math.round(upload.fileSize / 1024)} KB
+**File Size:** ${Math.round(Number(upload.fileSize) / 1024)} KB
 **Upload Date:** ${new Date(upload.uploadedAt).toLocaleDateString()}
 
 **Transcription:**
@@ -81,7 +81,7 @@ ${JSON.stringify(latestAnalysis.analysisResult, null, 2)}
       }
     } else {
       // Get all user's data as context
-      const analysesWithUploads = await FileStorage.getAnalysesWithUploads(userId);
+      const analysesWithUploads = await DatabaseStorage.getAnalysesByUser(userId);
       const completedAnalyses = analysesWithUploads.filter(a => a.status === 'COMPLETED');
       
       if (completedAnalyses.length === 0) {
@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user's available data for chatbot context
-    const analysesWithUploads = await FileStorage.getAnalysesWithUploads(userId);
+    const analysesWithUploads = await DatabaseStorage.getAnalysesByUser(userId);
     const completedAnalyses = analysesWithUploads.filter(a => a.status === 'COMPLETED');
 
     const availableContext = completedAnalyses.map(analysis => ({
@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
       fileName: analysis.upload?.originalName || 'Unknown',
       analysisType: analysis.analysisType,
       uploadDate: analysis.upload?.uploadedAt,
-      overallScore: analysis.analysisResult?.overallScore || 0
+      overallScore: (analysis.analysisResult as any)?.overallScore || 0
     }));
 
     return NextResponse.json({

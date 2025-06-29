@@ -5,18 +5,29 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "build:db": "npm run db:generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "lint:fix": "next lint --fix"
+    "lint:fix": "next lint --fix",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx src/lib/seed.ts",
+    "db:migrate-data": "tsx src/lib/migration.ts",
+    "db:setup": "npm run db:generate && npm run db:push",
+    "db:debug": "tsx src/lib/debug-db.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.839.0",
     "@aws-sdk/s3-request-presigner": "^3.839.0",
     "@google/generative-ai": "^0.24.1",
+    "@prisma/client": "^6.10.1",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-toast": "^1.2.14",
     "@types/multer": "^1.4.13",
+    "@types/pg": "^8.15.4",
     "@vercel/analytics": "^1.5.0",
     "@vercel/speed-insights": "^1.2.0",
     "class-variance-authority": "^0.7.1",
@@ -25,6 +36,8 @@
     "lucide-react": "^0.513.0",
     "multer": "^2.0.1",
     "next": "15.3.3",
+    "pg": "^8.16.3",
+    "prisma": "^6.10.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.8",
@@ -39,6 +52,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
     "tailwindcss": "^4",
+    "tsx": "^4.20.3",
     "typescript": "^5"
   }
 }

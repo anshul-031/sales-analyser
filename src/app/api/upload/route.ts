@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
-import { FileStorage } from '@/lib/file-storage';
+import { DatabaseStorage } from '@/lib/db';
 import { FILE_UPLOAD_CONFIG } from '@/lib/constants';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         
         Logger.info('[Upload API] File uploaded to R2 with key:', key);
 
-        const uploadRecord = await FileStorage.createUpload({
+        const uploadRecord = await DatabaseStorage.createUpload({
           filename: file.name,
           originalName: file.name,
           fileSize: file.size,
@@ -253,12 +253,15 @@ export async function GET(request: NextRequest) {
 
     Logger.info('[Upload API] Fetching uploads for user:', userId);
 
-    // Get uploads with analysis information from memory
-    const uploads = FileStorage.getUploadsWithAnalyses(userId);
+    // Get uploads with analysis information from database
+    const uploads = await DatabaseStorage.getUploadsByUser(userId);
+
+    // Import serialization utility
+    const { serializeUploads } = await import('../../../lib/serialization');
 
     return NextResponse.json({
       success: true,
-      uploads
+      uploads: serializeUploads(uploads)
     });
 
   } catch (error) {

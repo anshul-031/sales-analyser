@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
-import { FileStorage } from '@/lib/file-storage';
+import { DatabaseStorage } from '@/lib/db';
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -19,7 +19,7 @@ export async function DELETE(request: NextRequest) {
       // Delete specific upload
       Logger.info('[Cleanup API] Deleting specific upload:', uploadId);
       
-      const upload = await FileStorage.getUploadById(uploadId);
+      const upload = await DatabaseStorage.getUploadById(uploadId);
       if (!upload) {
         return NextResponse.json({
           success: false,
@@ -34,34 +34,28 @@ export async function DELETE(request: NextRequest) {
         }, { status: 403 });
       }
 
-      const deleted = await FileStorage.deleteUploadedFile(uploadId);
+      // Note: With the new database approach, we don't delete upload records 
+      // to preserve analysis history. Files from R2 are automatically cleaned up
+      // after analysis completion when AUTO_DELETE_FILES=true
+      Logger.info('[Cleanup API] Upload records are preserved for analysis history');
       
       return NextResponse.json({
         success: true,
-        message: deleted ? 'File deleted successfully' : 'File was already deleted',
-        deleted
+        message: 'Upload records are preserved for analysis history. File cleanup happens automatically after analysis.',
+        deleted: false
       });
     } else {
       // Delete all completed analysis files for user
-      Logger.info('[Cleanup API] Cleaning up completed analyses for user:', userId);
+      Logger.info('[Cleanup API] With database storage, completed analyses are preserved for history');
       
-      const analyses = await FileStorage.getAnalysesByUser(userId);
+      const analyses = await DatabaseStorage.getAnalysesByUser(userId);
       const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
       
-      let deletedCount = 0;
-      for (const analysis of completedAnalyses) {
-        try {
-          await FileStorage.cleanupCompletedAnalysis(analysis.id);
-          deletedCount++;
-        } catch (error) {
-          Logger.warn('[Cleanup API] Failed to cleanup analysis:', analysis.id, error);
-        }
-      }
-
+      // In the new approach, we don't delete completed analyses as they provide valuable history
       return NextResponse.json({
         success: true,
-        message: `Cleaned up ${deletedCount} completed analysis files`,
-        deletedCount,
+        message: `Found ${completedAnalyses.length} completed analyses. These are preserved for analysis history.`,
+        deletedCount: 0,
         totalCompleted: completedAnalyses.length
       });
     }
@@ -90,12 +84,12 @@ export async function GET(request: NextRequest) {
 
     Logger.info('[Cleanup API] Getting cleanup status for user:', userId);
 
-    const uploads = await FileStorage.getUploadsWithAnalyses(userId);
-    const analyses = await FileStorage.getAnalysesByUser(userId);
+    const uploads = await DatabaseStorage.getUploadsByUser(userId);
+    const analyses = await DatabaseStorage.getAnalysesByUser(userId);
     
     const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
     const filesWithCompletedAnalysis = uploads.filter(upload => 
-      upload.analyses.some(analysis => analysis.status === 'COMPLETED')
+      analyses.some(analysis => analysis.uploadId === upload.id && analysis.status === 'COMPLETED')
     );
 
     return NextResponse.json({

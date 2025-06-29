@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // User relationships
+  uploads   Upload[]
+  analyses  Analysis[]
+
+  @@map("users")
+}
+
+model Upload {
+  id           String   @id @default(cuid())
+  filename     String
+  originalName String
+  fileSize     BigInt
+  mimeType     String
+  fileUrl      String   // R2 storage key
+  uploadedAt   DateTime @default(now())
+  userId       String
+
+  // Relationships
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyses  Analysis[]
+
+  @@map("uploads")
+}
+
+model Analysis {
+  id                String        @id @default(cuid())
+  status            AnalysisStatus @default(PENDING)
+  analysisType      AnalysisType
+  customPrompt      String?
+  customParameters  Json?
+  transcription     String?
+  analysisResult    Json?
+  errorMessage      String?
+  analysisDuration  Int?          // Duration in milliseconds
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  userId            String
+  uploadId          String
+
+  // Relationships
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  upload Upload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  // Additional analysis metadata
+  insights          AnalysisInsight[]
+  callMetrics       CallMetrics?
+
+  @@map("analyses")
+}
+
+model AnalysisInsight {
+  id         String   @id @default(cuid())
+  analysisId String
+  category   String   // e.g., "sentiment", "keywords", "action_items", "summary"
+  key        String   // e.g., "overall_sentiment", "key_topics"
+  value      Json     // Flexible JSON field for any insight data
+  confidence Float?   // Confidence score if applicable
+  createdAt  DateTime @default(now())
+
+  // Relationships
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@map("analysis_insights")
+}
+
+model CallMetrics {
+  id               String   @id @default(cuid())
+  analysisId       String   @unique
+  duration         Int?     // Call duration in seconds
+  participantCount Int?     // Number of participants
+  wordCount        Int?     // Total word count
+  sentimentScore   Float?   // Overall sentiment score
+  energyLevel      Float?   // Energy/enthusiasm level
+  talkRatio        Json?    // Talk time ratio between participants
+  interruptionCount Int?    // Number of interruptions
+  pauseCount       Int?     // Number of significant pauses
+  speakingPace     Float?   // Words per minute
+  createdAt        DateTime @default(now())
+
+  // Relationships
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@map("call_metrics")
+}
+
+enum AnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AnalysisType {
+  DEFAULT
+  CUSTOM
+  PARAMETERS
+}

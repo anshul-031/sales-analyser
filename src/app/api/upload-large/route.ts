@@ -3,7 +3,7 @@ import { Logger } from '@/lib/utils';
 import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
-import { FileStorage } from '@/lib/file-storage';
+import { DatabaseStorage } from '@/lib/db';
 
 const r2 = new S3Client({
   region: 'auto',
@@ -93,7 +93,7 @@ async function completeUpload(request: NextRequest, params: any) {
             })
         );
 
-        const newUpload = await FileStorage.createUpload({
+        const newUpload = await DatabaseStorage.createUpload({
             filename: fileName,
             originalName: fileName.replace(/.gz$/, ''),
             fileSize: fileSize,
@@ -134,13 +134,17 @@ async function completeUpload(request: NextRequest, params: any) {
         
         const uploadDuration = Date.now() - startTime;
 
+        // Import serialization utility
+        const { serializeUpload, serializeAnalyses } = await import('../../../lib/serialization');
+
         return NextResponse.json({
             success: true,
             message: analysisStarted ? `File uploaded and analysis started.` : `File uploaded successfully.`,
             results: [{ id: newUpload.id, filename: fileName, success: true, uploadId: newUpload.id, uploadDuration }],
             summary: { total: 1, successful: 1, failed: 0, totalUploadDuration: uploadDuration, overallDuration: uploadDuration },
             analysisStarted,
-            analyses
+            analyses: serializeAnalyses(analyses),
+            upload: serializeUpload(newUpload)
         });
 
     } catch (error) {
