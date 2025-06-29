@@ -25,6 +25,7 @@ interface UploadFile {
   compressedSize?: number;
   compressionTime?: number;
   isPaused?: boolean;
+  uploadDuration?: number;
 }
 
 export default function FileUpload({
@@ -241,15 +242,16 @@ export default function FileUpload({
 
         setFiles(prev => prev.map(f => {
           const uploadResult = result.results.find((r: any) => r.filename === compressedFile.name);
-          if (uploadResult) {
+          if (f.id === uploadFile.id && uploadResult) {
             return {
               ...f,
               status: uploadResult.success ? 'success' as const : 'error' as const,
               error: uploadResult.error,
-              uploadId: uploadResult.id
+              uploadId: uploadResult.id,
+              uploadDuration: uploadResult.uploadDuration,
             };
           }
-          return { ...f, status: 'error' as const, error: 'Upload result not found' };
+          return f;
         }));
 
         onUploadComplete(result);
@@ -405,6 +407,11 @@ export default function FileUpload({
                         </span>
                       )}
                     </p>
+                    {fileItem.uploadDuration && (
+                        <p className="text-xs text-gray-500">
+                            Upload time: {(fileItem.uploadDuration / 1000).toFixed(2)}s
+                        </p>
+                    )}
                     {fileItem.error && (
                       <p className="text-xs text-red-500 mt-1">{fileItem.error}</p>
                     )}

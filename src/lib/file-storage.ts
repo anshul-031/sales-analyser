@@ -34,6 +34,7 @@ export interface StoredAnalysis {
   transcription?: string;
   analysisResult?: any;
   errorMessage?: string;
+  analysisDuration?: number;
   createdAt: string;
   updatedAt: string;
   userId: string;

@@ -21,6 +21,7 @@ interface Analysis {
   errorMessage?: string;
   createdAt: string;
   updatedAt: string;
+  analysisDuration?: number;
   upload: {
     id: string;
     originalName: string;
@@ -499,6 +500,12 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                   <p className="text-sm text-gray-600">
                     Created: {formatDate(new Date(analysis.createdAt))} •
                     File size: {analysis.upload ? Math.round(analysis.upload.fileSize / 1024) : 'Unknown'} KB
+                    {analysis.analysisDuration && (
+                      <span className="text-gray-500">
+                        {' • '}
+                        <span className="font-semibold">Analysis Time:</span> {(analysis.analysisDuration / 1000).toFixed(2)}s
+                      </span>
+                    )}
                   </p>
 
                   {analysis.errorMessage && (

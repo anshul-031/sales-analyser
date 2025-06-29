@@ -27,6 +27,7 @@ function isValidAudioFile(file: File): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   Logger.info('[Upload API] Starting in-memory file upload process');
   
   try {
@@ -55,8 +56,10 @@ export async function POST(request: NextRequest) {
     const results = [];
     let successCount = 0;
     let failCount = 0;
+    let totalUploadDuration = 0;
 
     for (const file of files) {
+      const fileUploadStartTime = Date.now();
       try {
         Logger.info('[Upload API] Processing file:', file.name, 'size:', file.size, 'bytes');
 
@@ -110,6 +113,9 @@ export async function POST(request: NextRequest) {
           fileUrl: key,
           userId: userId,
         });
+        
+        const uploadDuration = Date.now() - fileUploadStartTime;
+        totalUploadDuration += uploadDuration;
 
         results.push({
           id: uploadRecord.id,
@@ -117,7 +123,8 @@ export async function POST(request: NextRequest) {
           size: file.size,
           type: file.type,
           success: true,
-          uploadedAt: uploadRecord.uploadedAt
+          uploadedAt: uploadRecord.uploadedAt,
+          uploadDuration,
         });
 
         successCount++;
@@ -133,8 +140,8 @@ export async function POST(request: NextRequest) {
         failCount++;
       }
     }
-
-    Logger.info('[Upload API] Upload complete. Success:', successCount, 'Failed:', failCount);
+    const overallDuration = Date.now() - startTime;
+    Logger.info('[Upload API] Upload complete. Success:', successCount, 'Failed:', failCount, 'Total time:', overallDuration, 'ms');
 
     // Automatically start analysis for successfully uploaded files
     let analysisStarted = false;
@@ -214,7 +221,9 @@ export async function POST(request: NextRequest) {
       summary: {
         total: files.length,
         successful: successCount,
-        failed: failCount
+        failed: failCount,
+        totalUploadDuration,
+        overallDuration,
       },
       analysisStarted,
       analyses

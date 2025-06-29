@@ -179,6 +179,7 @@ export async function GET(request: NextRequest) {
 
 // Background processing function
 async function processAnalysisInBackground(analysisId: string, upload: { id: string, fileUrl: string, mimeType: string, filename: string }) {
+  const analysisStartTime = Date.now();
   try {
     Logger.info('[Analyze API] Processing analysis in background:', analysisId);
 
@@ -243,11 +244,15 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     analysisResult.transcription = transcription;
 
     Logger.info('[Analyze API] Analysis completed successfully');
+    
+    const analysisEndTime = Date.now();
+    const analysisDuration = analysisEndTime - analysisStartTime;
 
     // Update analysis with results
     await FileStorage.updateAnalysis(analysisId, {
       analysisResult,
-      status: 'COMPLETED'
+      status: 'COMPLETED',
+      analysisDuration,
     });
 
     // Clean up the uploaded file after successful analysis (if enabled)
@@ -264,10 +269,14 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
   } catch (error) {
     Logger.error('[Analyze API] Background analysis failed for', analysisId + ':', error);
     
+    const analysisEndTime = Date.now();
+    const analysisDuration = analysisEndTime - analysisStartTime;
+    
     // Update analysis with error
     await FileStorage.updateAnalysis(analysisId, {
       status: 'FAILED',
-      errorMessage: error instanceof Error ? error.message : 'Unknown error occurred'
+      errorMessage: error instanceof Error ? error.message : 'Unknown error occurred',
+      analysisDuration,
     });
 
     // Clean up the uploaded file after failed analysis (if enabled)

@@ -82,6 +82,7 @@ async function getUploadUrls({ key, uploadId, parts }: { key: string, uploadId: 
 
 async function completeUpload(request: NextRequest, params: any) {
     const { key, uploadId, parts, fileName, contentType, fileSize, userId, customParameters, originalContentType } = params;
+    const startTime = Date.now();
     try {
         await r2.send(
             new CompleteMultipartUploadCommand({
@@ -130,12 +131,14 @@ async function completeUpload(request: NextRequest, params: any) {
         } else {
             Logger.warn('[Upload API] Failed to auto-start analysis');
         }
+        
+        const uploadDuration = Date.now() - startTime;
 
         return NextResponse.json({
             success: true,
             message: analysisStarted ? `File uploaded and analysis started.` : `File uploaded successfully.`,
-            results: [{ id: newUpload.id, filename: fileName, success: true, uploadId: newUpload.id }],
-            summary: { total: 1, successful: 1, failed: 0 },
+            results: [{ id: newUpload.id, filename: fileName, success: true, uploadId: newUpload.id, uploadDuration }],
+            summary: { total: 1, successful: 1, failed: 0, totalUploadDuration: uploadDuration, overallDuration: uploadDuration },
             analysisStarted,
             analyses
         });
