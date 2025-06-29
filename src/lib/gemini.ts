@@ -197,7 +197,27 @@ export class GeminiAnalysisService {
     console.log(`[GeminiService] Starting audio transcription, size: ${audioBuffer.length} bytes`);
     
     const base64Audio = audioBuffer.toString('base64');
-    const prompt = "Please transcribe this audio file accurately. Focus on capturing all spoken words, including any sales conversation, questions, and responses.";
+    const prompt = `Please transcribe this audio file with the following requirements:
+1.  **Speaker Diarization**: Identify and label each speaker (e.g., "Speaker 1", "Speaker 2").
+2.  **Transcription**: Provide a verbatim transcription of the conversation.
+3.  **Timestamps**: Include start and end times for each speaker segment.
+4.  **Translation**: If the original language is not English, provide an English translation of the transcription.
+5.  **Language Identification**: Identify the original language of the conversation.
+
+Return the result in a JSON object with the following structure:
+{
+  "original_language": "<identified language>",
+  "diarized_transcription": [
+    { "speaker": "<speaker_label>", "text": "<transcribed_text>", "start_time": <start_seconds>, "end_time": <end_seconds> },
+    ...
+  ],
+  "english_translation": [
+    { "speaker": "<speaker_label>", "text": "<translated_text>", "start_time": <start_seconds>, "end_time": <end_seconds> },
+    ...
+  ]
+}
+
+If the original language is English, the "english_translation" field should be the same as "diarized_transcription".`;
     
     try {
       const transcription = await this.makeAPICallWithRetry(async () => {
@@ -217,7 +237,19 @@ export class GeminiAnalysisService {
       });
       
       console.log(`[GeminiService] Transcription completed, length: ${transcription.length} characters`);
-      return transcription;
+      
+      // Extract JSON from response
+      const jsonMatch = transcription.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return jsonMatch[0];
+      }
+      
+      // Fallback for non-JSON responses
+      return JSON.stringify({
+        original_language: "unknown",
+        diarized_transcription: [{ speaker: "unknown", text: transcription }],
+        english_translation: [{ speaker: "unknown", text: "Translation not available" }]
+      });
     } catch (error) {
       console.error('[GeminiService] Transcription error:', error);
       

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Download, Eye, EyeOff, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Target, Lightbulb, Star, Award, MessageCircle } from 'lucide-react';
+import { RefreshCw, Download, Eye, EyeOff, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Target, Lightbulb, Star, Award, MessageCircle, FileText } from 'lucide-react';
 import { formatDate, getStatusColor, getStatusIcon } from '@/lib/utils';
 import Chatbot from './Chatbot';
 
@@ -30,12 +30,25 @@ interface Analysis {
   } | null;
 }
 
+interface TranscriptionSegment {
+  speaker: string;
+  text: string;
+  start_time?: number;
+  end_time?: number;
+}
+
+interface ParsedTranscription {
+  original_language: string;
+  diarized_transcription: TranscriptionSegment[];
+  english_translation?: TranscriptionSegment[];
+}
+
 export default function AnalysisResults({ userId, analysisIds, onRefresh }: AnalysisResultsProps) {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedAnalysis, setExpandedAnalysis] = useState<string | null>(null);
-  const [showTranscription, setShowTranscription] = useState<{ [key: string]: boolean }>({});
+  const [activeView, setActiveView] = useState<{ [key: string]: 'analysis' | 'transcription' }>({});
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: { [section: string]: boolean } }>({});
   const [activeChatbot, setActiveChatbot] = useState<{ analysisId: string; uploadId: string } | null>(null);
 
@@ -49,6 +62,8 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
       const response = await fetch(`/api/analyze?${queryParams}`);
       const result = await response.json();
 
+      console.log('[AnalysisResults] Raw API response:', result);
+
       if (result.success) {
         let filteredAnalyses = result.analyses;
         
@@ -58,6 +73,17 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
             analysisIds.includes(analysis.id)
           );
         }
+
+        // Log each analysis in detail
+        filteredAnalyses.forEach((analysis: Analysis, index: number) => {
+          console.log(`[AnalysisResults] Analysis #${index + 1}:`, {
+            id: analysis.id,
+            status: analysis.status,
+            analysisType: analysis.analysisType,
+            hasAnalysisResult: !!analysis.analysisResult,
+            analysisResult: analysis.analysisResult
+          });
+        });
 
         setAnalyses(filteredAnalyses);
         console.log('[AnalysisResults] Fetched', filteredAnalyses.length, 'analyses');
@@ -91,13 +117,22 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
   }, [analyses]);
 
   const toggleAnalysisExpansion = (analysisId: string) => {
-    setExpandedAnalysis(expandedAnalysis === analysisId ? null : analysisId);
+    const isOpening = expandedAnalysis !== analysisId;
+    setExpandedAnalysis(isOpening ? analysisId : null);
+
+    // Always default to analysis view when an item is expanded
+    if (isOpening) {
+      setActiveView(prev => ({
+        ...prev,
+        [analysisId]: 'analysis'
+      }));
+    }
   };
 
-  const toggleTranscription = (analysisId: string) => {
-    setShowTranscription(prev => ({
+  const toggleActiveView = (analysisId: string) => {
+    setActiveView(prev => ({
       ...prev,
-      [analysisId]: !prev[analysisId]
+      [analysisId]: prev[analysisId] === 'transcription' ? 'analysis' : 'transcription'
     }));
   };
 
@@ -130,6 +165,89 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const parseTranscription = (transcription: string | undefined): ParsedTranscription | null => {
+    if (!transcription) return null;
+    try {
+      const parsed = JSON.parse(transcription);
+      if (parsed && parsed.diarized_transcription) {
+        return parsed;
+      }
+      return null;
+    } catch (error) {
+      // It might be a plain string for older analyses, so we don't log an error.
+      return null;
+    }
+  };
+
+  const formatTimestamp = (seconds: number) => {
+    return new Date(seconds * 1000).toISOString().substr(14, 5);
+  };
+
+  const renderTranscription = (transcription: string | undefined) => {
+    const parsedData = parseTranscription(transcription);
+
+    if (!parsedData) {
+      return (
+        <pre className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
+          {transcription || 'No transcription available.'}
+        </pre>
+      );
+    }
+
+    const showTranslation = 
+      parsedData.english_translation && 
+      parsedData.original_language.toLowerCase() !== 'english' &&
+      JSON.stringify(parsedData.diarized_transcription) !== JSON.stringify(parsedData.english_translation);
+
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600">
+          Original Language: <span className="font-semibold uppercase">{parsedData.original_language}</span>
+        </p>
+        <div className={`grid ${showTranslation ? 'grid-cols-1 md:grid-cols-2 gap-6' : 'grid-cols-1'}`}>
+          <div>
+            {showTranslation && <h5 className="font-semibold mb-2 text-gray-700">Original Transcription</h5>}
+            <div className="space-y-4 bg-white p-4 rounded-lg border">
+              {parsedData.diarized_transcription.map((segment, index) => (
+                <div key={index} className="text-sm flex flex-col">
+                  <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
+                    <span className="font-bold text-gray-800">{segment.speaker}</span>
+                    {segment.start_time !== undefined && segment.end_time !== undefined && (
+                      <span>
+                        {formatTimestamp(segment.start_time)} - {formatTimestamp(segment.end_time)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="pl-2 border-l-2 border-blue-200">{segment.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          {showTranslation && parsedData.english_translation && (
+            <div>
+              <h5 className="font-semibold mb-2 text-gray-700">English Translation</h5>
+              <div className="space-y-4 bg-white p-4 rounded-lg border">
+                {parsedData.english_translation.map((segment, index) => (
+                  <div key={index} className="text-sm flex flex-col">
+                    <div className="flex justify-between items-center text-xs text-gray-500 mb-1">
+                      <span className="font-bold text-gray-800">{segment.speaker}</span>
+                      {segment.start_time !== undefined && segment.end_time !== undefined && (
+                        <span>
+                          {formatTimestamp(segment.start_time)} - {formatTimestamp(segment.end_time)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="pl-2 border-l-2 border-green-200">{segment.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   const getScoreColor = (score: number) => {
@@ -277,7 +395,41 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
   };
 
   const renderDefaultAnalysisResult = (result: any, analysisId: string) => {
-    if (!result || !result.parameters) return null;
+    console.log('[AnalysisResults] Rendering default analysis:', { result, analysisId });
+
+    if (!result) {
+      console.error('[AnalysisResults] renderDefaultAnalysisResult: received null result');
+      return <p className="text-red-500">Could not load analysis result.</p>;
+    }
+
+    console.log('[AnalysisResults] Result keys:', Object.keys(result));
+    console.log('[AnalysisResults] Looking for parameters in result...');
+    
+    const parameters = result.parameters;
+    if (!parameters) {
+      console.error('[AnalysisResults] renderDefaultAnalysisResult: no parameters property found in result', { result });
+      return (
+        <div className="text-center py-8">
+          <AlertCircle className="w-12 h-12 text-orange-400 mx-auto mb-4" />
+          <p className="text-orange-600">No analysis parameters were found in the result.</p>
+          <p className="text-sm text-gray-500 mt-2">Expected: result.parameters</p>
+          <p className="text-sm text-gray-500">Available keys: {Object.keys(result).join(', ')}</p>
+        </div>
+      );
+    }
+    
+    if (Object.keys(parameters).length === 0) {
+      console.error('[AnalysisResults] renderDefaultAnalysisResult: parameters object is empty', { parameters });
+      return (
+        <div className="text-center py-8">
+          <AlertCircle className="w-12 h-12 text-orange-400 mx-auto mb-4" />
+          <p className="text-orange-600">Analysis parameters object is empty.</p>
+        </div>
+      );
+    }
+
+    console.log('[AnalysisResults] Rendering parameters:', parameters);
+    console.log('[AnalysisResults] Parameter keys:', Object.keys(parameters));
 
     return (
       <div className="space-y-8">
@@ -295,7 +447,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
 
         {/* Parameter Results in a grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {Object.entries(result.parameters).map(([key, param]: [string, any]) =>
+          {Object.entries(parameters).map(([key, param]: [string, any]) =>
             renderParameterCard(key, param, analysisId, result.parameterNames?.[key])
           )}
         </div>
@@ -309,19 +461,19 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center p-4 bg-white rounded-lg">
               <div className="text-2xl font-bold text-green-600">
-                {Object.values(result.parameters).filter((p: any) => p.score >= 7).length}
+                {Object.values(parameters).filter((p: any) => p.score >= 7).length}
               </div>
               <div className="text-sm text-gray-600">Strong Areas</div>
             </div>
             <div className="text-center p-4 bg-white rounded-lg">
               <div className="text-2xl font-bold text-yellow-600">
-                {Object.values(result.parameters).filter((p: any) => p.score >= 4 && p.score < 7).length}
+                {Object.values(parameters).filter((p: any) => p.score >= 4 && p.score < 7).length}
               </div>
               <div className="text-sm text-gray-600">Areas to Improve</div>
             </div>
             <div className="text-center p-4 bg-white rounded-lg">
               <div className="text-2xl font-bold text-red-600">
-                {Object.values(result.parameters).filter((p: any) => p.score < 4).length}
+                {Object.values(parameters).filter((p: any) => p.score < 4).length}
               </div>
               <div className="text-sm text-gray-600">Priority Focus</div>
             </div>
@@ -522,20 +674,14 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                         onClick={(e) => {
                           e.stopPropagation();
                           if (analysis.upload) {
-                            if (analysis.upload) {
-                              if (analysis.upload) {
-                                if (analysis.upload) {
-                                  setActiveChatbot({
-                                    analysisId: analysis.id,
-                                    uploadId: analysis.upload.id
-                                  });
-                                }
-                              }
-                            }
+                            setActiveChatbot({
+                              analysisId: analysis.id,
+                              uploadId: analysis.upload.id
+                            });
                           }
                         }}
                         disabled={!analysis.upload}
-                        className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                        className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Ask AI about this analysis"
                       >
                         <MessageCircle className="w-5 h-5" />
@@ -551,6 +697,18 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                         title="Download Analysis"
                       >
                         <Download className="w-5 h-5" />
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleActiveView(analysis.id);
+                        }}
+                        disabled={!analysis.transcription}
+                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={activeView[analysis.id] === 'transcription' ? "View Analysis" : "View Transcription"}
+                      >
+                        {activeView[analysis.id] === 'transcription' ? <FileText className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </>
                   )}
@@ -583,55 +741,55 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                   </div>
                 )}
 
-                {analysis.status === 'COMPLETED' && analysis.analysisResult && (
-                  <div className="space-y-8">
-                    {/* Custom Prompt Display */}
-                    {analysis.analysisType === 'custom' && analysis.customPrompt && (
-                      <div className="border border-purple-200 rounded-xl p-6 bg-purple-50">
-                        <h4 className="font-semibold text-purple-800 mb-3 flex items-center">
-                          <Target className="w-5 h-5 mr-2" />
-                          Custom Analysis Instructions
-                        </h4>
-                        <p className="text-purple-700 leading-relaxed">{analysis.customPrompt}</p>
-                      </div>
-                    )}
-
-                    {/* Analysis Results */}
-                    {analysis.analysisType === 'default' || analysis.analysisType === 'parameters'
-                      ? renderDefaultAnalysisResult(analysis.analysisResult, analysis.id)
-                      : renderCustomAnalysisResult(analysis.analysisResult)
-                    }
-
-                    {/* Transcription */}
-                    {analysis.transcription && (
-                      <div className="border border-gray-200 rounded-xl">
-                        <button
-                          onClick={() => toggleTranscription(analysis.id)}
-                          className="w-full p-4 text-left hover:bg-gray-50 flex justify-between items-center rounded-t-xl"
-                        >
-                          <span className="font-semibold text-gray-800 flex items-center">
-                            <Eye className="w-5 h-5 mr-2" />
-                            Full Transcription
-                          </span>
-                          {showTranscription[analysis.id] ? (
-                            <EyeOff className="w-5 h-5 text-gray-500" />
-                          ) : (
-                            <Eye className="w-5 h-5 text-gray-500" />
-                          )}
-                        </button>
-                        
-                        {showTranscription[analysis.id] && (
-                          <div className="border-t border-gray-200 p-6 bg-gray-50">
-                            <div className="max-h-96 overflow-y-auto">
-                              <pre className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
-                                {analysis.transcription}
-                              </pre>
-                            </div>
+                {analysis.status === 'COMPLETED' && (
+                  activeView[analysis.id] === 'transcription' ? (
+                    <div className="max-h-[30rem] overflow-y-auto p-1">
+                      {renderTranscription(analysis.transcription)}
+                    </div>
+                  ) : (
+                    (() => {
+                      console.log('[AnalysisResults] Rendering analysis section for:', analysis.id, {
+                        hasAnalysisResult: !!analysis.analysisResult,
+                        analysisType: analysis.analysisType,
+                        analysisResult: analysis.analysisResult
+                      });
+                      
+                      if (!analysis.analysisResult) {
+                        return (
+                          <div className="text-center py-8">
+                            <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                            <p className="text-gray-500">No analysis data available.</p>
+                            <p className="text-sm text-gray-400 mt-2">Analysis result is missing or empty.</p>
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                        );
+                      }
+
+                      console.log('[AnalysisResults] About to render analysis based on type:', analysis.analysisType);
+                      
+                      return (
+                        <div className="space-y-8">
+                          {/* Custom Prompt Display */}
+                          {analysis.analysisType === 'custom' && analysis.customPrompt && (
+                            <div className="border border-purple-200 rounded-xl p-6 bg-purple-50">
+                              <h4 className="font-semibold text-purple-800 mb-3 flex items-center">
+                                <Target className="w-5 h-5 mr-2" />
+                                Custom Analysis Instructions
+                              </h4>
+                              <p className="text-purple-700 leading-relaxed">{analysis.customPrompt}</p>
+                            </div>
+                          )}
+
+                          {/* Analysis Results */}
+                          {(analysis.analysisType === 'default' || 
+                            analysis.analysisType === 'parameters' || 
+                            analysis.analysisType === 'PARAMETERS')
+                            ? renderDefaultAnalysisResult(analysis.analysisResult, analysis.id)
+                            : renderCustomAnalysisResult(analysis.analysisResult)
+                          }
+                        </div>
+                      );
+                    })()
+                  )
                 )}
               </div>
             )}
