@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
 import { FileStorage } from '@/lib/file-storage';
 import { FILE_UPLOAD_CONFIG } from '@/lib/constants';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+
+const r2 = new S3Client({
+  region: 'auto',
+  endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+});
 
 // File validation constants - use centralized config with env override
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || FILE_UPLOAD_CONFIG.MAX_FILE_SIZE.toString());
@@ -78,16 +88,26 @@ export async function POST(request: NextRequest) {
         
         Logger.info('[Upload API] File loaded into memory:', file.name);
 
-        // This route is now deprecated for large files, but for smaller files,
-        // we can still save them directly to R2 without chunking.
-        // For simplicity, we will just use the file-storage which now points to R2.
-        // The `fileBuffer` is not used anymore.
+        const key = `uploads/${userId}/${file.name}`;
+        const expires = new Date();
+        expires.setDate(expires.getDate() + 1); // 24-hour expiry
+
+        await r2.send(new PutObjectCommand({
+            Bucket: process.env.R2_BUCKET_NAME!,
+            Key: key,
+            Body: buffer,
+            ContentType: file.type,
+            Expires: expires,
+        }));
+        
+        Logger.info('[Upload API] File uploaded to R2 with key:', key);
+
         const uploadRecord = await FileStorage.createUpload({
           filename: file.name,
           originalName: file.name,
           fileSize: file.size,
           mimeType: file.type,
-          fileUrl: `uploads/${userId}/${file.name}`, // Example path, adjust as needed
+          fileUrl: key,
           userId: userId,
         });
 

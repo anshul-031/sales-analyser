@@ -37,11 +37,15 @@ async function startUpload({ fileName, contentType }: { fileName: string, conten
     const key = `${uploadId}/${fileName}`;
 
     try {
+        const expires = new Date();
+        expires.setDate(expires.getDate() + 1); // 24-hour expiry
+
         const multipartUpload = await r2.send(
             new CreateMultipartUploadCommand({
                 Bucket: process.env.R2_BUCKET_NAME!,
                 Key: key,
                 ContentType: contentType,
+                Expires: expires,
             })
         );
 
