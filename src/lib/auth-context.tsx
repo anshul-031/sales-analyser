@@ -61,10 +61,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const data = await response.json();
         if (data.success) {
           setUser(data.user);
+        } else {
+          setUser(null); // Explicitly clear user if auth check fails but response is ok
         }
+      } else {
+        setUser(null); // Explicitly clear user on non-ok responses (e.g. 401)
       }
     } catch (error) {
       console.error('Auth check error:', error);
+      setUser(null); // Also clear user on network errors
     } finally {
       setLoading(false);
     }
