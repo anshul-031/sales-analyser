@@ -1,11 +1,25 @@
 import nodemailer from 'nodemailer';
+import { NextRequest } from 'next/server';
 
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+// Function to dynamically determine base URL from request
+function getBaseUrl(request?: NextRequest): string {
+  // If no request provided, fall back to environment variable
+  if (!request) {
+    return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  }
+  
+  // Dynamically detect base URL from request headers
+  const host = request.headers.get('host');
+  const protocol = request.headers.get('x-forwarded-proto') ||
+                  (host?.includes('localhost') ? 'http' : 'https');
+  return `${protocol}://${host}`;
+}
 
 // Create reusable transporter object using the default SMTP transport
 const transporter = nodemailer.createTransport({
@@ -51,8 +65,9 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
 }
 
 // Send email verification email
-export async function sendEmailVerification(email: string, token: string): Promise<boolean> {
-  const verificationUrl = `${APP_URL}/api/auth/verify-email?token=${token}`;
+export async function sendEmailVerification(email: string, token: string, request?: NextRequest): Promise<boolean> {
+  const baseUrl = getBaseUrl(request);
+  const verificationUrl = `${baseUrl}/api/auth/verify-email?token=${token}`;
   
   const html = `
     <!DOCTYPE html>
@@ -109,8 +124,9 @@ export async function sendEmailVerification(email: string, token: string): Promi
 }
 
 // Send password reset email
-export async function sendPasswordResetEmail(email: string, token: string): Promise<boolean> {
-  const resetUrl = `${APP_URL}/reset-password?token=${token}`;
+export async function sendPasswordResetEmail(email: string, token: string, request?: NextRequest): Promise<boolean> {
+  const baseUrl = getBaseUrl(request);
+  const resetUrl = `${baseUrl}/reset-password?token=${token}`;
   
   const html = `
     <!DOCTYPE html>

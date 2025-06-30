@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     }) as any;
 
     // Send verification email
-    const emailSent = await sendEmailVerification(user.email, emailVerificationToken);
+    const emailSent = await sendEmailVerification(user.email, emailVerificationToken, request);
     if (!emailSent) {
       console.error('Failed to send verification email to:', user.email);
     }
