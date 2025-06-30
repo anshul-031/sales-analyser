@@ -67,7 +67,7 @@ export default function CallAnalysisPage() {
   const [callRecordings, setCallRecordings] = useState<CallRecording[]>([]);
   const [filteredRecordings, setFilteredRecordings] = useState<CallRecording[]>([]);
   const [selectedRecordings, setSelectedRecordings] = useState<Set<string>>(new Set());
-  const [timeFilter, setTimeFilter] = useState<string>('7d');
+  const [timeFilter, setTimeFilter] = useState<string>('all'); // Changed from '7d' to 'all'
   const [searchQuery, setSearchQuery] = useState('');
   const [customQuery, setCustomQuery] = useState('');
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
@@ -128,6 +128,14 @@ export default function CallAnalysisPage() {
           file.originalName?.match(/\.(mp3|wav|m4a|ogg|flac|aac)$/i)
         ) || [];
 
+        // Debug: Log the structure of the first audio file to understand the date format
+        if (audioFiles.length > 0) {
+          console.log('[DEBUG] First audio file structure:', audioFiles[0]);
+          console.log('[DEBUG] uploadedAt field:', audioFiles[0].uploadedAt);
+          console.log('[DEBUG] uploadedAt type:', typeof audioFiles[0].uploadedAt);
+          console.log('[DEBUG] uploadedAt JSON:', JSON.stringify(audioFiles[0].uploadedAt));
+        }
+
         // The upload API already includes analysis data
         setCallRecordings(audioFiles);
         Logger.info('[CallAnalysis] Loaded', audioFiles.length, 'call recordings');
@@ -150,9 +158,33 @@ export default function CallAnalysisPage() {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - filterDays);
 
-      filtered = filtered.filter(recording => 
-        new Date(recording.uploadedAt) >= cutoffDate
-      );
+      filtered = filtered.filter(recording => {
+        try {
+          const uploadedAt = recording.uploadedAt;
+          let recordingDate: Date;
+          
+          // Convert to Date, handling various formats
+          if (typeof uploadedAt === 'string') {
+            recordingDate = new Date(uploadedAt);
+          } else if (uploadedAt && typeof uploadedAt === 'object') {
+            // Handle serialized date objects by converting to string first
+            recordingDate = new Date((uploadedAt as any).toString());
+          } else {
+            recordingDate = new Date(uploadedAt);
+          }
+          
+          // Check if the date is valid
+          if (isNaN(recordingDate.getTime())) {
+            console.warn('Invalid date for recording:', recording.originalName, 'uploadedAt:', uploadedAt);
+            return true; // Include recordings with invalid dates rather than filtering them out
+          }
+          
+          return recordingDate >= cutoffDate;
+        } catch (error) {
+          console.warn('Error parsing date for recording:', recording.originalName, error);
+          return true; // Include recordings with date parsing errors
+        }
+      });
     }
 
     // Apply search filter
@@ -314,6 +346,9 @@ export default function CallAnalysisPage() {
                   </option>
                 ))}
               </select>
+              <div className="text-sm text-gray-500">
+                (Total: {callRecordings.length}, Filtered: {filteredRecordings.length})
+              </div>
             </div>
 
             {/* Search */}
