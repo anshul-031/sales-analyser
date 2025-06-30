@@ -52,30 +52,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const checkAuth = async () => {
+    console.log('[Auth] Checking authentication status...');
     try {
       const response = await fetch('/api/auth/me', {
         credentials: 'include',
       });
+      console.log('[Auth] checkAuth response status:', response.status);
       
       if (response.ok) {
         const data = await response.json();
+        console.log('[Auth] checkAuth response data:', data);
         if (data.success) {
           setUser(data.user);
+          console.log('[Auth] User authenticated:', data.user);
         } else {
           setUser(null); // Explicitly clear user if auth check fails but response is ok
+          console.log('[Auth] Auth check failed, user cleared.');
         }
       } else {
         setUser(null); // Explicitly clear user on non-ok responses (e.g. 401)
+        console.log('[Auth] Auth check failed with non-ok response, user cleared.');
       }
     } catch (error) {
-      console.error('Auth check error:', error);
+      console.error('[Auth] Auth check error:', error);
       setUser(null); // Also clear user on network errors
     } finally {
       setLoading(false);
+      console.log('[Auth] Finished auth check.');
     }
   };
 
   const login = async (email: string, password: string) => {
+    console.log('[Auth] Attempting to login with email:', email);
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -87,20 +95,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
 
       const data = await response.json();
+      console.log('[Auth] Login response data:', data);
       
       if (data.success) {
         setUser(data.user);
+        console.log('[Auth] Login successful for user:', data.user);
         return { success: true };
       } else {
+        console.log('[Auth] Login failed:', data.message);
         return { success: false, message: data.message };
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('[Auth] Login error:', error);
       return { success: false, message: 'An error occurred while logging in' };
     }
   };
 
   const register = async (registerData: RegisterData) => {
+    console.log('[Auth] Attempting to register with data:', registerData);
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
@@ -111,28 +123,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
 
       const data = await response.json();
+      console.log('[Auth] Register response data:', data);
       
       if (data.success) {
+        console.log('[Auth] Registration successful');
         return { success: true, message: data.message };
       } else {
+        console.log('[Auth] Registration failed:', data.message);
         return { success: false, message: data.message };
       }
     } catch (error) {
-      console.error('Registration error:', error);
+      console.error('[Auth] Registration error:', error);
       return { success: false, message: 'An error occurred while creating your account' };
     }
   };
 
   const logout = async () => {
+    console.log('[Auth] Logging out user...');
     try {
       await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       });
       setUser(null);
+      console.log('[Auth] User logged out successfully.');
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('[Auth] Logout error:', error);
       setUser(null); // Clear user even if request fails
+      console.log('[Auth] User cleared from state despite logout error.');
     }
   };
 

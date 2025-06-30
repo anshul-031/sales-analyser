@@ -77,12 +77,13 @@ export default function UploadPage() {
       }>;
     };
     
-    // If analysis was auto-started, extract the analysis IDs and go to results
+    // If analysis was auto-started, extract the analysis IDs and redirect
     if (uploadResponse.analysisStarted && uploadResponse.analyses) {
       const newAnalysisIds = uploadResponse.analyses.map((a) => a.id);
-      Logger.info('[UploadPage] Auto-analysis started, going to results with', newAnalysisIds.length, 'analyses');
+      Logger.info('[UploadPage] Auto-analysis started, redirecting to history with', newAnalysisIds.length, 'analyses');
       setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
-      setCurrentStep(AppStep.RESULTS);
+      alert("Analysis has started and can take 5-10 minutes. You will be redirected to the call history page where you can see the progress.");
+      router.push('/call-history');
     } else if (uploadResponse.results) {
       // Just update uploaded files - no configuration step needed
       const successfulFiles = uploadResponse.results.filter((r) => r.success && r.id && r.originalName && r.uploadedAt);
@@ -98,7 +99,8 @@ export default function UploadPage() {
   const handleAnalysisStart = (newAnalysisIds: string[]) => {
     Logger.info('[UploadPage] Analysis started for', newAnalysisIds.length, 'files');
     setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
-    setCurrentStep(AppStep.RESULTS);
+    alert("Analysis has started and can take 5-10 minutes. You will be redirected to the call history page where you can see the progress.");
+    router.push('/call-history');
   };
 
   const getStepStatus = (step: AppStep) => {
