@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -12,12 +12,31 @@ function LoginFormContent() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const { login } = useAuth();
+  const { login, user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   
   const isVerified = searchParams.get('verified') === 'true';
   const redirectTo = searchParams.get('redirect') || '/';
+
+  // Redirect authenticated users
+  useEffect(() => {
+    if (!loading && user) {
+      router.push(redirectTo);
+    }
+  }, [user, loading, router, redirectTo]);
+
+  // Show loading state while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

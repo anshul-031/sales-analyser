@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function ForgotPasswordForm() {
@@ -10,7 +11,27 @@ export default function ForgotPasswordForm() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const { forgotPassword } = useAuth();
+  const { forgotPassword, user, loading } = useAuth();
+  const router = useRouter();
+
+  // Redirect authenticated users
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/');
+    }
+  }, [user, loading, router]);
+
+  // Show loading state while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

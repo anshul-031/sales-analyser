@@ -14,17 +14,36 @@ function ResetPasswordFormContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const { resetPassword } = useAuth();
+  const { resetPassword, user, loading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   
   const token = searchParams.get('token');
+
+  // Redirect authenticated users to home if no valid token
+  useEffect(() => {
+    if (!loading && user && !token) {
+      router.push('/');
+    }
+  }, [user, loading, router, token]);
 
   useEffect(() => {
     if (!token) {
       setError('Invalid reset link. Please request a new password reset.');
     }
   }, [token]);
+
+  // Show loading state while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   const validateForm = () => {
     if (password !== confirmPassword) {
