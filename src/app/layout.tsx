@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sales Analyser - AI-Powered Audio Analysis",
-  description: "Upload and analyze audio files using advanced AI to extract insights from sales calls and customer interactions.",
+  title: "Sales Performance Analyzer - AI-Powered Sales Call Analysis",
+  description: "Transform your sales calls into winning insights with AI-powered analysis. Get detailed performance scores, actionable recommendations, and conversation insights.",
 };
 
 export default function RootLayout({

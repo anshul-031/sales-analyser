@@ -7,8 +7,13 @@ import { BarChart3, Upload, FileAudio } from 'lucide-react';
 
 const navigationItems = [
   {
-    name: 'Upload & Analyze',
+    name: 'Home',
     href: '/',
+    icon: BarChart3
+  },
+  {
+    name: 'Upload & Analyze',
+    href: '/upload',
     icon: Upload
   },
   {
