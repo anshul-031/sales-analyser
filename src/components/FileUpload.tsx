@@ -2,11 +2,17 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
-import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target, Edit3, Save, Plus, ChevronDown, ChevronUp, Loader2, Wind } from 'lucide-react';
+import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target, Edit3, Save, Plus, ChevronDown, ChevronUp, Loader2, Wind, Zap, Settings } from 'lucide-react';
 import { formatFileSize, isValidAudioFile } from '@/lib/utils';
 import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/gemini';
 import { MAX_FILE_SIZE, MAX_FILES, CHUNK_SIZE } from '@/lib/constants';
 import * as fflate from 'fflate';
+import { 
+  audioCompressor, 
+  COMPRESSION_PRESETS, 
+  CompressionSettings, 
+  AudioCompressor 
+} from '@/lib/audio-compression';
 
 interface FileUploadProps {
   onUploadComplete: (response: unknown) => void;
@@ -26,6 +32,9 @@ interface UploadFile {
   compressionTime?: number;
   isPaused?: boolean;
   uploadDuration?: number;
+  compressionRatio?: number;
+  audioCompressionUsed?: boolean;
+  originalAudioSize?: number;
 }
 
 export default function FileUpload({
@@ -48,6 +57,9 @@ export default function FileUpload({
   );
   const [showParameterDetails, setShowParameterDetails] = useState(false);
   const [editingParameter, setEditingParameter] = useState<string | null>(null);
+  const [compressionSettings, setCompressionSettings] = useState<keyof typeof COMPRESSION_PRESETS>('MAXIMUM');
+  const [enableAudioCompression, setEnableAudioCompression] = useState(true);
+  const [showCompressionSettings, setShowCompressionSettings] = useState(false);
 
   const handleParameterToggle = (id: string) => {
     setAnalysisParameters(prev =>
@@ -148,29 +160,86 @@ export default function FileUpload({
     let fileKey: string | null = null;
 
     try {
-        // Step 1: Compress the file
-        setFiles(prev => prev.map(f => f.id === uploadFile.id ? { ...f, status: 'compressing' } : f));
         const startTime = Date.now();
-        const fileBuffer = await uploadFile.file.arrayBuffer();
+        const originalSize = uploadFile.file.size;
+        
+        // Step 1: Apply advanced audio compression if enabled
+        let fileToUpload = uploadFile.file;
+        let audioCompressionUsed = false;
+        let compressionRatio = 0;
+        
+        if (enableAudioCompression && isValidAudioFile(uploadFile.file.type)) {
+            try {
+                setFiles(prev => prev.map(f => f.id === uploadFile.id ? { 
+                    ...f, 
+                    status: 'compressing',
+                    progress: 0 
+                } : f));
+                
+                console.log('[FileUpload] Applying audio compression:', compressionSettings);
+                
+                const compressionResult = await audioCompressor.compressAudio(
+                    uploadFile.file, 
+                    COMPRESSION_PRESETS[compressionSettings]
+                );
+                
+                fileToUpload = compressionResult.compressedFile;
+                audioCompressionUsed = true;
+                compressionRatio = compressionResult.compressionRatio;
+                
+                console.log('[FileUpload] Audio compression complete:', {
+                    originalSize: originalSize,
+                    compressedSize: compressionResult.compressedSize,
+                    ratio: `${(compressionRatio * 100).toFixed(1)}%`,
+                    processingTime: compressionResult.processingTime
+                });
+                
+                setFiles(prev => prev.map(f => f.id === uploadFile.id ? {
+                    ...f,
+                    originalAudioSize: originalSize,
+                    compressedSize: compressionResult.compressedSize,
+                    compressionTime: compressionResult.processingTime,
+                    compressionRatio: compressionRatio,
+                    audioCompressionUsed: true,
+                    status: 'compressing',
+                    progress: 25
+                } : f));
+                
+            } catch (audioError) {
+                console.warn('[FileUpload] Audio compression failed, falling back to original file:', audioError);
+                // Continue with original file if audio compression fails
+            }
+        }
+
+        // Step 2: Apply additional gzip compression
+        setFiles(prev => prev.map(f => f.id === uploadFile.id ? { 
+            ...f, 
+            status: 'compressing',
+            progress: audioCompressionUsed ? 50 : 25
+        } : f));
+        
+        const fileBuffer = await fileToUpload.arrayBuffer();
         const compressedData = fflate.compressSync(new Uint8Array(fileBuffer), { level: 9 });
         const compressionTime = Date.now() - startTime;
 
-        const compressedFile = new File([compressedData], `${uploadFile.file.name}.gz`, { type: 'application/gzip' });
+        const finalCompressedFile = new File([compressedData], `${fileToUpload.name}.gz`, { type: 'application/gzip' });
 
         setFiles(prev => prev.map(f => f.id === uploadFile.id ? {
             ...f,
-            compressedSize: compressedData.length,
+            compressedSize: finalCompressedFile.size,
             compressionTime,
+            status: 'compressing',
+            progress: 75
         } : f));
 
-        // Step 2: Start multipart upload
+        // Step 3: Start multipart upload
         const startResponse = await fetch('/api/upload-large', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'start-upload',
-                fileName: compressedFile.name,
-                contentType: compressedFile.type,
+                fileName: finalCompressedFile.name,
+                contentType: finalCompressedFile.type,
             }),
         });
 
@@ -179,7 +248,7 @@ export default function FileUpload({
         uploadId = startData.uploadId;
         fileKey = startData.key;
 
-        // Step 3: Get signed URLs for chunks
+        // Step 4: Get signed URLs for chunks
         const numChunks = Math.ceil(compressedData.length / CHUNK_SIZE);
         const urlsResponse = await fetch('/api/upload-large', {
             method: 'POST',
@@ -195,7 +264,7 @@ export default function FileUpload({
         const urlsData = await urlsResponse.json();
         if (!urlsData.success) throw new Error('Failed to get upload URLs');
 
-        // Step 4: Upload chunks
+        // Step 5: Upload chunks
         const uploadedParts: { ETag: string, PartNumber: number }[] = [];
         let uploadedSize = 0;
 
@@ -218,7 +287,7 @@ export default function FileUpload({
             setFiles(prev => prev.map(f => f.id === uploadFile.id ? { ...f, status: 'uploading', progress } : f));
         }
 
-        // Step 5: Complete upload
+        // Step 6: Complete upload
         const enabledParams = analysisParameters.filter(p => p.enabled);
         const completeResponse = await fetch('/api/upload-large', {
             method: 'POST',
@@ -228,12 +297,15 @@ export default function FileUpload({
                 key: fileKey,
                 uploadId,
                 parts: uploadedParts,
-                fileName: compressedFile.name,
-                contentType: compressedFile.type,
-                fileSize: compressedFile.size,
+                fileName: finalCompressedFile.name,
+                contentType: finalCompressedFile.type,
+                fileSize: finalCompressedFile.size,
                 userId: userId,
                 customParameters: enabledParams,
                 originalContentType: uploadFile.file.type,
+                audioCompressionUsed,
+                originalAudioSize: audioCompressionUsed ? originalSize : undefined,
+                compressionRatio: audioCompressionUsed ? compressionRatio : undefined,
             }),
         });
 
@@ -241,7 +313,7 @@ export default function FileUpload({
         if (!result.success) throw new Error('Failed to complete upload');
 
         setFiles(prev => prev.map(f => {
-          const uploadResult = result.results.find((r: any) => r.filename === compressedFile.name);
+          const uploadResult = result.results.find((r: any) => r.filename === finalCompressedFile.name);
           if (f.id === uploadFile.id && uploadResult) {
             return {
               ...f,
@@ -261,7 +333,7 @@ export default function FileUpload({
         setFiles(prev => prev.map(f => f.id === uploadFile.id ? {
             ...f,
             status: 'error',
-            error: 'Failed to compress or upload file'
+            error: error instanceof Error ? error.message : 'Failed to compress or upload file'
         } : f));
 
         if (uploadId && fileKey) {
@@ -296,14 +368,16 @@ export default function FileUpload({
     setFiles(prev => prev.filter(f => f.status !== 'success'));
   };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string, audioCompressionUsed?: boolean) => {
     switch (status) {
       case 'success':
         return <CheckCircle className="w-4 h-4 text-green-500" />;
       case 'error':
         return <AlertCircle className="w-4 h-4 text-red-500" />;
       case 'compressing':
-        return <Wind className="w-4 h-4 text-blue-500 animate-pulse" />;
+        return audioCompressionUsed ? 
+          <Zap className="w-4 h-4 text-purple-500 animate-pulse" /> :
+          <Wind className="w-4 h-4 text-blue-500 animate-pulse" />;
       case 'uploading':
         return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
       default:
@@ -342,6 +416,8 @@ export default function FileUpload({
           Supported formats: MP3, WAV, M4A, AAC, OGG, FLAC, WebM
           <br />
           Max file size: {formatFileSize(maxFileSize)} | Max files: {maxFiles}
+          <br />
+          {enableAudioCompression && <span className="text-purple-600">📦 Advanced audio compression enabled</span>}
         </p>
       </div>
 
@@ -394,16 +470,21 @@ export default function FileUpload({
             {files.map((fileItem) => (
               <div key={fileItem.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center space-x-3 flex-1">
-                  {getStatusIcon(fileItem.status)}
+                  {getStatusIcon(fileItem.status, fileItem.audioCompressionUsed)}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-700 truncate">
                       {fileItem.file.name}
                     </p>
                     <p className="text-xs text-gray-500">
                       {formatFileSize(fileItem.file.size)}
+                      {fileItem.originalAudioSize && fileItem.audioCompressionUsed && (
+                        <span className="ml-2 text-xs text-purple-600">
+                          (Audio: {formatFileSize(fileItem.originalAudioSize)} → {formatFileSize(fileItem.originalAudioSize * (1 - (fileItem.compressionRatio || 0)))})
+                        </span>
+                      )}
                       {fileItem.compressedSize && (
                         <span className="ml-2 text-xs text-green-600">
-                          (Compressed: {formatFileSize(fileItem.compressedSize)})
+                          (Final: {formatFileSize(fileItem.compressedSize)})
                         </span>
                       )}
                     </p>
@@ -416,7 +497,9 @@ export default function FileUpload({
                       <p className="text-xs text-red-500 mt-1">{fileItem.error}</p>
                     )}
                     {fileItem.status === 'compressing' && (
-                      <p className="text-xs text-blue-500 mt-1">Compressing...</p>
+                      <p className="text-xs text-purple-500 mt-1">
+                        {fileItem.audioCompressionUsed ? 'Applying audio compression...' : 'Compressing file...'}
+                      </p>
                     )}
                      {fileItem.status === 'uploading' && fileItem.progress !== undefined && (
                       <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
@@ -452,6 +535,78 @@ export default function FileUpload({
                   <span className="text-red-600">✗ {errorFiles} failed</span>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Audio Compression Settings */}
+          {pendingFiles > 0 && (
+            <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <Zap className="w-5 h-5 text-purple-600" />
+                  <h3 className="font-semibold text-purple-800">Audio Compression</h3>
+                  <input
+                    type="checkbox"
+                    checked={enableAudioCompression}
+                    onChange={(e) => setEnableAudioCompression(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setShowCompressionSettings(!showCompressionSettings)}
+                    className="text-xs text-purple-600 hover:text-purple-800 flex items-center space-x-1"
+                  >
+                    <Settings className="w-3 h-3" />
+                    <span>{showCompressionSettings ? 'Hide' : 'Settings'}</span>
+                  </button>
+                </div>
+              </div>
+              
+              <p className="text-sm text-purple-700 mb-3">
+                {enableAudioCompression 
+                  ? `Maximum audio compression enabled (${compressionSettings} preset). This will significantly reduce file sizes while maintaining call quality.`
+                  : "Audio compression is disabled. Files will be uploaded with basic gzip compression only."
+                }
+              </p>
+
+              {enableAudioCompression && showCompressionSettings && (
+                <div className="space-y-3 pt-3 border-t border-purple-200">
+                  <div>
+                    <label className="block text-sm font-medium text-purple-700 mb-2">
+                      Compression Level
+                    </label>
+                    <select
+                      value={compressionSettings}
+                      onChange={(e) => setCompressionSettings(e.target.value as keyof typeof COMPRESSION_PRESETS)}
+                      className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                    >
+                      <option value="MAXIMUM">Maximum (16kbps, mono, 11kHz) - Extreme compression</option>
+                      <option value="HIGH">High (32kbps, mono, 16kHz) - Very high compression</option>
+                      <option value="MEDIUM">Medium (64kbps, mono, 22kHz) - High compression</option>
+                      <option value="LOW">Low (96kbps, mono, 44kHz) - Moderate compression</option>
+                    </select>
+                  </div>
+                  
+                  {pendingFiles > 0 && (
+                    <div className="bg-purple-100 p-3 rounded-lg">
+                      <h4 className="text-sm font-medium text-purple-800 mb-2">Estimated Compression</h4>
+                      <div className="space-y-1 text-xs text-purple-700">
+                        {files.filter(f => f.status === 'pending').map((file) => {
+                          const estimatedRatio = AudioCompressor.estimateCompressionRatio(file.file, COMPRESSION_PRESETS[compressionSettings]);
+                          const estimatedSize = file.file.size * (1 - estimatedRatio);
+                          return (
+                            <div key={file.id} className="flex justify-between">
+                              <span className="truncate">{file.file.name}</span>
+                              <span>{formatFileSize(file.file.size)} → {formatFileSize(estimatedSize)} ({(estimatedRatio * 100).toFixed(0)}% reduction)</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
