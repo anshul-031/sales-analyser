@@ -6,10 +6,9 @@ import FileUpload from '@/components/FileUpload';
 import AnalysisResults from '@/components/AnalysisResults';
 import Chatbot from '@/components/Chatbot';
 import { Logger } from '@/lib/utils';
-import { MAX_FILE_SIZE, MAX_FILES, USER_CONFIG } from '@/lib/constants';
-
-// Simulate user authentication for demo purposes
-const DEMO_USER_ID = USER_CONFIG.DEMO_USER_ID;
+import { MAX_FILE_SIZE, MAX_FILES } from '@/lib/constants';
+import { useAuth } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
 
 enum AppStep {
   UPLOAD = 'upload',
@@ -17,23 +16,36 @@ enum AppStep {
 }
 
 export default function UploadPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.UPLOAD);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; originalName: string; uploadedAt: string; [key: string]: unknown }>>([]);
   const [analysisIds, setAnalysisIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
   // Load uploaded files on component mount
   useEffect(() => {
-    loadUploadedFiles();
-  }, []);
+    if (user && !authLoading) {
+      loadUploadedFiles();
+    }
+  }, [user, authLoading]);
 
   const loadUploadedFiles = async () => {
+    if (!user) return;
+    
     try {
-      Logger.info('[UploadPage] Loading uploaded files for user:', DEMO_USER_ID);
+      Logger.info('[UploadPage] Loading uploaded files for user:', user.id);
       setLoading(true);
       
-      const response = await fetch(`/api/upload?userId=${DEMO_USER_ID}`);
+      const response = await fetch('/api/upload');
       const result = await response.json();
       
       if (result.success) {
@@ -140,7 +152,7 @@ export default function UploadPage() {
         return (
           <FileUpload
             onUploadComplete={handleUploadComplete}
-            userId={DEMO_USER_ID}
+            userId={user?.id || ''}
             maxFiles={MAX_FILES}
             maxFileSize={MAX_FILE_SIZE}
           />
@@ -149,7 +161,7 @@ export default function UploadPage() {
       case AppStep.RESULTS:
         return (
           <AnalysisResults
-            userId={DEMO_USER_ID}
+            userId={user?.id || ''}
             analysisIds={analysisIds}
             onRefresh={loadUploadedFiles}
           />
@@ -165,12 +177,29 @@ export default function UploadPage() {
     return analysisIds.length > 0 || uploadedFiles.length > 0;
   };
 
+  // Show loading spinner while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render anything if user is not authenticated (redirect will happen)
+  if (!user) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Chatbot */}
       {showChatbot && (
         <Chatbot
-          userId={DEMO_USER_ID}
+          userId={user?.id || ''}
           onClose={() => setShowChatbot(false)}
         />
       )}

@@ -54,8 +54,7 @@ export default function AnalysisConfig({ uploadedFiles, userId, onAnalysisStart 
       const requestBody = {
         uploadIds: selectedFiles,
         analysisType,
-        customPrompt: analysisType === 'custom' ? customPrompt : undefined,
-        userId
+        customPrompt: analysisType === 'custom' ? customPrompt : undefined
       };
 
       console.log('[AnalysisConfig] Sending analysis request:', requestBody);

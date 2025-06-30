@@ -71,7 +71,7 @@ export default function Chatbot({ userId, analysisId, uploadId, onClose }: Chatb
 
   const loadAvailableContext = async () => {
     try {
-      const response = await fetch(`/api/chatbot?userId=${userId}`);
+      const response = await fetch('/api/chatbot');
       const result = await response.json();
       
       if (result.success) {
@@ -99,7 +99,7 @@ export default function Chatbot({ userId, analysisId, uploadId, onClose }: Chatb
 
     try {
       // Determine context parameters based on selection
-      const contextParams: any = { userId, question: userMessage.content };
+      const contextParams: any = { question: userMessage.content };
       
       if (selectedContext !== 'all') {
         if (selectedContext.startsWith('analysis-')) {

@@ -47,17 +47,23 @@ export async function disconnectFromDatabase() {
 // Database utility functions
 export class DatabaseStorage {
   // User operations
+  // This method is deprecated - use authentication system instead
   static async createUser(userId: string) {
     try {
-      const user = await prisma.user.upsert({
+      // For backward compatibility, we'll find the user by ID
+      // In the new auth system, users are created through registration
+      const user = await prisma.user.findUnique({
         where: { id: userId },
-        update: {},
-        create: { id: userId },
       });
-      Logger.info('[Database] Created/found user:', userId);
+      
+      if (!user) {
+        throw new Error('User not found. Please register first.');
+      }
+      
+      Logger.info('[Database] Found user:', userId);
       return user;
     } catch (error) {
-      Logger.error('[Database] Error creating user:', error);
+      Logger.error('[Database] Error finding user:', error);
       throw error;
     }
   }

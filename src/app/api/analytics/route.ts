@@ -1,23 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DatabaseStorage } from '@/lib/db';
 import { Logger } from '@/lib/utils';
+import { getAuthenticatedUser } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
+    // Check authentication
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
       return NextResponse.json({
         success: false,
-        error: 'User ID is required'
-      }, { status: 400 });
+        error: 'Authentication required'
+      }, { status: 401 });
     }
 
-    Logger.info('[Analytics API] Fetching analytics for user:', userId);
+    Logger.info('[Analytics API] Fetching analytics for user:', user.id);
 
     // Get comprehensive user analytics
-    const userAnalytics = await DatabaseStorage.getUserAnalyticsData(userId);
+    const userAnalytics = await DatabaseStorage.getUserAnalyticsData(user.id);
 
     // Get global stats for comparison
     const globalStats = await DatabaseStorage.getGlobalStats();

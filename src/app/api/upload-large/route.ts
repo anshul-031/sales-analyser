@@ -4,6 +4,7 @@ import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, CompleteMult
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import { DatabaseStorage } from '@/lib/db';
+import { getAuthenticatedUser } from '@/lib/auth';
 
 const r2 = new S3Client({
   region: 'auto',
@@ -15,16 +16,25 @@ const r2 = new S3Client({
 });
 
 export async function POST(request: NextRequest) {
+  // Check authentication for all actions
+  const user = await getAuthenticatedUser(request);
+  if (!user) {
+    return NextResponse.json({
+      success: false,
+      error: 'Authentication required'
+    }, { status: 401 });
+  }
+
   const params = await request.json();
   const { action } = params;
 
   switch (action) {
     case 'start-upload':
-      return await startUpload(params);
+      return await startUpload(params, user);
     case 'get-upload-urls':
       return await getUploadUrls(params);
     case 'complete-upload':
-      return await completeUpload(request, params);
+      return await completeUpload(request, params, user);
     case 'abort-upload':
         return await abortUpload(params);
     default:
@@ -32,9 +42,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function startUpload({ fileName, contentType }: { fileName: string, contentType: string }) {
+async function startUpload({ fileName, contentType }: { fileName: string, contentType: string }, user: any) {
     const uploadId = randomUUID();
-    const key = `${uploadId}/${fileName}`;
+    const key = `uploads/${user.id}/${uploadId}/${fileName}`;
 
     try {
         const expires = new Date();
@@ -80,8 +90,8 @@ async function getUploadUrls({ key, uploadId, parts }: { key: string, uploadId: 
     }
 }
 
-async function completeUpload(request: NextRequest, params: any) {
-    const { key, uploadId, parts, fileName, contentType, fileSize, userId, customParameters, originalContentType } = params;
+async function completeUpload(request: NextRequest, params: any, user: any) {
+    const { key, uploadId, parts, fileName, contentType, fileSize, customParameters, originalContentType } = params;
     const startTime = Date.now();
     try {
         await r2.send(
@@ -99,7 +109,7 @@ async function completeUpload(request: NextRequest, params: any) {
             fileSize: fileSize,
             mimeType: originalContentType,
             fileUrl: key,
-            userId: userId,
+            userId: user.id,
         });
 
         // Trigger analysis
@@ -111,25 +121,34 @@ async function completeUpload(request: NextRequest, params: any) {
             uploadIds: [newUpload.id],
             analysisType: 'parameters',
             customParameters: customParameters || [],
-            userId: userId,
+            userId: user.id,
             autoTriggered: true
         };
 
-        const analyzeResponse = await fetch(`${baseUrl}/api/analyze`, {
+        // Create a new NextRequest for internal API call
+        const internalRequest = new NextRequest(`${baseUrl}/api/analyze`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': request.headers.get('Authorization') || '',
+                'Cookie': request.headers.get('Cookie') || '',
+            },
             body: JSON.stringify(analysisPayload)
         });
 
+        // Make the internal API call
+        const { POST: analyzeHandler } = await import('../analyze/route');
+        const analyzeResponse = await analyzeHandler(internalRequest);
+
         let analysisStarted = false;
         let analyses = [];
-        if (analyzeResponse.ok) {
+        if (analyzeResponse.status === 200) {
             const analyzeResult = await analyzeResponse.json();
             analysisStarted = true;
             analyses = analyzeResult.analyses || [];
             Logger.info('[Upload API] Analysis auto-started successfully for', newUpload.id);
         } else {
-            Logger.warn('[Upload API] Failed to auto-start analysis');
+            Logger.warn('[Upload API] Failed to auto-start analysis, status:', analyzeResponse.status);
         }
         
         const uploadDuration = Date.now() - startTime;

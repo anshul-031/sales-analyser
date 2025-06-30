@@ -2,15 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { geminiService } from '@/lib/gemini';
 import { DatabaseStorage } from '@/lib/db';
 import { Logger } from '@/lib/utils';
+import { getAuthenticatedUser } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
     Logger.info('[ChatbotAPI] Processing chatbot query');
     
-    const { userId, question, analysisId, uploadId } = await request.json();
+    // Check authentication
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json({
+        success: false,
+        error: 'Authentication required'
+      }, { status: 401 });
+    }
+    
+    const { question, analysisId, uploadId } = await request.json();
 
     // Validate required parameters
-    if (!userId || !question) {
+    if (!question) {
       return NextResponse.json({
         success: false,
         error: 'Missing required parameters: userId and question are required'
@@ -24,7 +34,7 @@ export async function POST(request: NextRequest) {
     if (analysisId) {
       // Get specific analysis data
       const analysis = await DatabaseStorage.getAnalysisById(analysisId);
-      if (analysis && analysis.userId === userId) {
+      if (analysis && analysis.userId === user.id) {
         const upload = await DatabaseStorage.getUploadById(analysis.uploadId);
         contextData = `
 **Call Recording: ${upload?.originalName || 'Unknown'}**
@@ -46,7 +56,7 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
     } else if (uploadId) {
       // Get specific upload data with its analyses
       const upload = await DatabaseStorage.getUploadById(uploadId);
-      if (upload && upload.userId === userId) {
+      if (upload && upload.userId === user.id) {
         const analyses = await DatabaseStorage.getAnalysesByUploadId(uploadId);
         const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
         
@@ -81,7 +91,7 @@ ${JSON.stringify(latestAnalysis.analysisResult, null, 2)}
       }
     } else {
       // Get all user's data as context
-      const analysesWithUploads = await DatabaseStorage.getAnalysesByUser(userId);
+      const analysesWithUploads = await DatabaseStorage.getAnalysesByUser(user.id);
       const completedAnalyses = analysesWithUploads.filter(a => a.status === 'COMPLETED');
       
       if (completedAnalyses.length === 0) {
@@ -176,18 +186,17 @@ Provide a brief, clear response that directly addresses the user's question. Be 
 // Optional: GET endpoint to retrieve chatbot conversation history
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
+    // Check authentication
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
       return NextResponse.json({
         success: false,
-        error: 'Missing userId parameter'
-      }, { status: 400 });
+        error: 'Authentication required'
+      }, { status: 401 });
     }
 
     // Get user's available data for chatbot context
-    const analysesWithUploads = await DatabaseStorage.getAnalysesByUser(userId);
+    const analysesWithUploads = await DatabaseStorage.getAnalysesByUser(user.id);
     const completedAnalyses = analysesWithUploads.filter(a => a.status === 'COMPLETED');
 
     const availableContext = completedAnalyses.map(analysis => ({

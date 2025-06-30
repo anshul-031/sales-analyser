@@ -3,6 +3,7 @@ import { Logger } from '@/lib/utils';
 import { DatabaseStorage } from '@/lib/db';
 import { FILE_UPLOAD_CONFIG } from '@/lib/constants';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getAuthenticatedUser } from '@/lib/auth';
 
 const r2 = new S3Client({
   region: 'auto',
@@ -31,18 +32,19 @@ export async function POST(request: NextRequest) {
   Logger.info('[Upload API] Starting in-memory file upload process');
   
   try {
+    // Check authentication
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json({
+        success: false,
+        error: 'Authentication required'
+      }, { status: 401 });
+    }
+
     // Parse form data
     const formData = await request.formData();
     const files = formData.getAll('files') as File[];
-    const userId = formData.get('userId') as string;
     const customParametersStr = formData.get('customParameters') as string;
-
-    if (!userId) {
-      return NextResponse.json({
-        success: false,
-        error: 'User ID is required'
-      }, { status: 400 });
-    }
 
     if (!files || files.length === 0) {
       return NextResponse.json({
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    Logger.info('[Upload API] Processing', files.length, 'files for user:', userId);
+    Logger.info('[Upload API] Processing', files.length, 'files for user:', user.id);
 
     const results = [];
     let successCount = 0;
@@ -91,7 +93,7 @@ export async function POST(request: NextRequest) {
         
         Logger.info('[Upload API] File loaded into memory:', file.name);
 
-        const key = `uploads/${userId}/${file.name}`;
+        const key = `uploads/${user.id}/${file.name}`;
         const expires = new Date();
         expires.setDate(expires.getDate() + 1); // 24-hour expiry
 
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
           fileSize: file.size,
           mimeType: file.type,
           fileUrl: key,
-          userId: userId,
+          userId: user.id,
         });
         
         const uploadDuration = Date.now() - fileUploadStartTime;
@@ -170,7 +172,7 @@ export async function POST(request: NextRequest) {
               uploadIds: uploadIds,
               analysisType: 'parameters',
               customParameters: customParameters,
-              userId: userId,
+              userId: user.id,
               autoTriggered: true
             };
           } catch (error) {
@@ -178,7 +180,7 @@ export async function POST(request: NextRequest) {
             analysisPayload = {
               uploadIds: uploadIds,
               analysisType: 'default',
-              userId: userId,
+              userId: user.id,
               autoTriggered: true
             };
           }
@@ -186,31 +188,41 @@ export async function POST(request: NextRequest) {
           analysisPayload = {
             uploadIds: uploadIds,
             analysisType: 'default',
-            userId: userId,
+            userId: user.id,
             autoTriggered: true
           };
         }
 
-        const analyzeResponse = await fetch(`${baseUrl}/api/analyze`, {
+        // Create a new NextRequest for internal API call
+        const internalRequest = new NextRequest(`${baseUrl}/api/analyze`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': request.headers.get('Authorization') || '',
+            'Cookie': request.headers.get('Cookie') || '',
           },
           body: JSON.stringify(analysisPayload)
         });
 
-        if (analyzeResponse.ok) {
+        // Make the internal API call
+        const { POST: analyzeHandler } = await import('../analyze/route');
+        const analyzeResponse = await analyzeHandler(internalRequest);
+
+        if (analyzeResponse.status === 200) {
           const analyzeResult = await analyzeResponse.json();
           analysisStarted = true;
           analyses = analyzeResult.analyses || [];
           Logger.info('[Upload API] Analysis auto-started successfully for', uploadIds.length, 'files');
         } else {
-          Logger.warn('[Upload API] Failed to auto-start analysis');
+          Logger.warn('[Upload API] Failed to auto-start analysis, status:', analyzeResponse.status);
         }
       } catch (error) {
         Logger.error('[Upload API] Error auto-starting analysis:', error);
       }
     }
+
+    // Import serialization utility
+    const { serializeAnalyses } = await import('../../../lib/serialization');
 
     return NextResponse.json({
       success: true,
@@ -226,7 +238,7 @@ export async function POST(request: NextRequest) {
         overallDuration,
       },
       analysisStarted,
-      analyses
+      analyses: serializeAnalyses(analyses)
     });
 
   } catch (error) {
@@ -241,20 +253,19 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
+    // Check authentication
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
       return NextResponse.json({
         success: false,
-        error: 'User ID is required'
-      }, { status: 400 });
+        error: 'Authentication required'
+      }, { status: 401 });
     }
 
-    Logger.info('[Upload API] Fetching uploads for user:', userId);
+    Logger.info('[Upload API] Fetching uploads for user:', user.id);
 
     // Get uploads with analysis information from database
-    const uploads = await DatabaseStorage.getUploadsByUser(userId);
+    const uploads = await DatabaseStorage.getUploadsByUser(user.id);
 
     // Import serialization utility
     const { serializeUploads } = await import('../../../lib/serialization');

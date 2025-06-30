@@ -4,6 +4,7 @@ import { DatabaseStorage } from '@/lib/db';
 import { geminiService } from '@/lib/gemini';
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import * as fflate from 'fflate';
+import { getAuthenticatedUser } from '@/lib/auth';
 
 const r2 = new S3Client({
   region: 'auto',
@@ -18,14 +19,16 @@ export async function POST(request: NextRequest) {
   try {
     Logger.info('[Analyze API] Starting analysis request');
 
-    const { uploadIds, analysisType, customPrompt, customParameters, userId } = await request.json();
-
-    if (!userId) {
+    // Check authentication
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
       return NextResponse.json({
         success: false,
-        error: 'User ID is required'
-      }, { status: 400 });
+        error: 'Authentication required'
+      }, { status: 401 });
     }
+
+    const { uploadIds, analysisType, customPrompt, customParameters } = await request.json();
 
     if (!uploadIds || !Array.isArray(uploadIds) || uploadIds.length === 0) {
       return NextResponse.json({
@@ -73,7 +76,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        if (upload.userId !== userId) {
+        if (upload.userId !== user.id) {
           Logger.error('[Analyze API] Upload does not belong to user:', uploadId);
           failedCount++;
           continue;
@@ -85,7 +88,7 @@ export async function POST(request: NextRequest) {
           analysisType: analysisType.toUpperCase() as 'DEFAULT' | 'CUSTOM' | 'PARAMETERS',
           customPrompt,
           customParameters: analysisType === 'parameters' ? customParameters : undefined,
-          userId,
+          userId: user.id,
           uploadId,
         });
 
@@ -140,25 +143,26 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    const analysisId = searchParams.get('analysisId');
-
-    if (!userId) {
+    // Check authentication
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
       return NextResponse.json({
         success: false,
-        error: 'User ID is required'
-      }, { status: 400 });
+        error: 'Authentication required'
+      }, { status: 401 });
     }
 
-    Logger.info('[Analyze API] Fetching analyses for user:', userId);
+    const { searchParams } = new URL(request.url);
+    const analysisId = searchParams.get('analysisId');
+
+    Logger.info('[Analyze API] Fetching analyses for user:', user.id);
 
     let analyses;
 
     if (analysisId) {
       // Get specific analysis
       const analysis = await DatabaseStorage.getAnalysisById(analysisId);
-      if (!analysis || analysis.userId !== userId) {
+      if (!analysis || analysis.userId !== user.id) {
         return NextResponse.json({
           success: false,
           error: 'Analysis not found'
@@ -167,7 +171,7 @@ export async function GET(request: NextRequest) {
       analyses = [analysis];
     } else {
       // Get all analyses for user
-      analyses = await DatabaseStorage.getAnalysesByUser(userId);
+      analyses = await DatabaseStorage.getAnalysesByUser(user.id);
     }
 
     // Convert BigInt to string for JSON serialization

@@ -14,9 +14,8 @@ import {
   Download
 } from 'lucide-react';
 import { Logger } from '@/lib/utils';
-import { USER_CONFIG } from '@/lib/constants';
-
-const DEMO_USER_ID = USER_CONFIG.DEMO_USER_ID;
+import { useAuth } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
 
 interface AnalyticsData {
   totalRecordings: number;
@@ -41,22 +40,35 @@ interface AnalyticsData {
 }
 
 export default function AnalyticsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeframe, setTimeframe] = useState('7d');
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    loadAnalytics();
-  }, [timeframe]);
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (user && !authLoading) {
+      loadAnalytics();
+    }
+  }, [timeframe, user, authLoading]);
 
   const loadAnalytics = async () => {
+    if (!user) return;
+    
     try {
       setLoading(true);
       
       // Fetch uploads and analyses data
       const [uploadsResponse, analysesResponse] = await Promise.all([
-        fetch(`/api/upload?userId=${DEMO_USER_ID}`),
-        fetch(`/api/analyze?userId=${DEMO_USER_ID}`)
+        fetch('/api/upload'),
+        fetch('/api/analyze')
       ]);
 
       const [uploadsResult, analysesResult] = await Promise.all([
@@ -150,6 +162,25 @@ export default function AnalyticsPage() {
       </div>
     </div>
   );
+
+  // Show loading spinner while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            <p className="ml-3 text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render anything if user is not authenticated
+  if (!user) {
+    return null;
+  }
 
   if (loading) {
     return (

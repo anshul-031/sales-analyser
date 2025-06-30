@@ -18,10 +18,8 @@ import {
   Loader2
 } from 'lucide-react';
 import { Logger } from '@/lib/utils';
-import { USER_CONFIG } from '@/lib/constants';
-
-// Simulate user authentication for demo purposes
-const DEMO_USER_ID = USER_CONFIG.DEMO_USER_ID;
+import { useAuth } from '@/lib/auth-context';
+import { useRouter } from 'next/navigation';
 
 interface AnalysisResult {
   query: string;
@@ -64,6 +62,8 @@ const TIME_FILTERS: TimeFilter[] = [
 ];
 
 export default function CallAnalysisPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [callRecordings, setCallRecordings] = useState<CallRecording[]>([]);
   const [filteredRecordings, setFilteredRecordings] = useState<CallRecording[]>([]);
   const [selectedRecordings, setSelectedRecordings] = useState<Set<string>>(new Set());
@@ -74,9 +74,18 @@ export default function CallAnalysisPage() {
   const [loading, setLoading] = useState(false);
   const [analyzingCustom, setAnalyzingCustom] = useState(false);
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    loadCallRecordings();
-  }, []);
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (user && !authLoading) {
+      loadCallRecordings();
+    }
+  }, [user, authLoading]);
 
   useEffect(() => {
     filterRecordings();
@@ -103,11 +112,13 @@ export default function CallAnalysisPage() {
   }, [filteredRecordings]);
 
   const loadCallRecordings = async () => {
+    if (!user) return;
+    
     try {
       setLoading(true);
-      Logger.info('[CallAnalysis] Loading call recordings for user:', DEMO_USER_ID);
+      Logger.info('[CallAnalysis] Loading call recordings for user:', user.id);
       
-      const response = await fetch(`/api/upload?userId=${DEMO_USER_ID}`);
+      const response = await fetch('/api/upload');
       const result = await response.json();
       
       if (result.success) {
@@ -253,6 +264,25 @@ export default function CallAnalysisPage() {
     if (diffMinutes > 0) return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
     return 'Just now';
   };
+
+  // Show loading spinner while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            <p className="ml-3 text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render anything if user is not authenticated
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">

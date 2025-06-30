@@ -75,7 +75,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
       setLoading(true);
       setError(null);
 
-      const queryParams = new URLSearchParams({ userId });
+      const queryParams = new URLSearchParams();
       const response = await fetch(`/api/analyze?${queryParams}`);
       const result = await response.json();
 
