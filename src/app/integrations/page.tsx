@@ -33,20 +33,36 @@ const IntegrationsPage = () => {
       }
       setError('');
       
+      console.log('[INTEGRATIONS] Fetching endpoints from /api/endpoints...');
+      
       const response = await fetch('/api/endpoints');
+      console.log('[INTEGRATIONS] Response status:', response.status);
+      console.log('[INTEGRATIONS] Response headers:', Object.fromEntries(response.headers.entries()));
+      
       const data = await response.json();
+      console.log('[INTEGRATIONS] Response data:', data);
       
       if (data.success) {
-        setEndpoints(data.endpoints);
+        console.log('[INTEGRATIONS] Successfully fetched', data.endpoints?.length || 0, 'endpoints');
+        console.log('[INTEGRATIONS] Endpoints:', data.endpoints?.map((e: APIEndpoint) => `${e.method} ${e.path}`));
+        setEndpoints(data.endpoints || []);
         setLastUpdated(data.lastUpdated);
+        
+        if (data.endpoints?.length === 0) {
+          console.warn('[INTEGRATIONS] No endpoints returned from API');
+          setError('No API endpoints found. The API may not be properly configured.');
+        }
       } else {
+        console.error('[INTEGRATIONS] API returned error:', data.error);
+        console.error('[INTEGRATIONS] Debug info:', data.debug);
         throw new Error(data.error || 'Failed to fetch endpoints');
       }
     } catch (error) {
-      console.error('Failed to fetch endpoints:', error);
+      console.error('[INTEGRATIONS] Failed to fetch endpoints:', error);
       setError(error instanceof Error ? error.message : 'Failed to load API endpoints');
       // Fallback to static endpoints if dynamic fetch fails
       if (endpoints.length === 0) {
+        console.log('[INTEGRATIONS] Using fallback static endpoints');
         setEndpoints(staticEndpoints);
       }
     } finally {
@@ -619,6 +635,32 @@ curl -X GET "${baseUrl}/api/analytics" \\
                 </p>
               </div>
             ) : null}
+            
+            {/* Debug Information */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <details className="cursor-pointer">
+                  <summary className="font-medium text-yellow-800 mb-2">Debug Information (Development Mode)</summary>
+                  <div className="text-sm text-yellow-700 space-y-2">
+                    <div><strong>Environment:</strong> {typeof window !== 'undefined' ? 'Client' : 'Server'}</div>
+                    <div><strong>Current URL:</strong> {typeof window !== 'undefined' ? window.location.href : 'N/A'}</div>
+                    <div><strong>Base URL:</strong> {baseUrl}</div>
+                    <div><strong>Endpoints Loaded:</strong> {endpoints.length}</div>
+                    <div><strong>Loading State:</strong> {loading ? 'Loading' : 'Loaded'}</div>
+                    <div><strong>Error State:</strong> {error || 'None'}</div>
+                    <div><strong>Last Updated:</strong> {lastUpdated || 'Never'}</div>
+                    {endpoints.length > 0 && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer">Endpoint Details</summary>
+                        <pre className="mt-2 text-xs bg-yellow-100 p-2 rounded overflow-auto">
+                          {JSON.stringify(endpoints.map(e => ({method: e.method, path: e.path, category: e.category})), null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                </details>
+              </div>
+            )}
             
             {!loading && (
               <>
