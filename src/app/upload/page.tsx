@@ -9,6 +9,7 @@ import { Logger } from '@/lib/utils';
 import { MAX_FILE_SIZE, MAX_FILES } from '@/lib/constants';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
+import { Toaster, toast } from 'sonner';
 
 enum AppStep {
   UPLOAD = 'upload',
@@ -23,6 +24,8 @@ export default function UploadPage() {
   const [analysisIds, setAnalysisIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
+  const [filesUploading, setFilesUploading] = useState(false);
+  const [fileStatuses, setFileStatuses] = useState<Record<string, any>>({});
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -61,46 +64,58 @@ export default function UploadPage() {
     }
   };
 
-  const handleUploadComplete = (response: unknown) => {
-    Logger.info('[UploadPage] Upload completed:', response);
+  const handleUploadsStart = () => {
+    setFilesUploading(true);
+    setFileStatuses({});
+  };
+
+  const handleFileUploadComplete = (result: { success: boolean; file: any; analysisId?: string }) => {
+    setFileStatuses(prev => ({
+      ...prev,
+      [result.file.id]: {
+        ...result.file,
+        status: result.success ? 'success' : 'error',
+        analysisId: result.analysisId,
+      }
+    }));
+  };
+
+  const handleAllUploadsComplete = (response: unknown) => {
+    console.log('[UploadPage] === UPLOADS COMPLETE CALLBACK ===');
+    console.log('[UploadPage] Response received:', JSON.stringify(response, null, 2));
     
-    // Type guard for response
+    setFilesUploading(false);
+    Logger.info('[UploadPage] All uploads completed:', response);
+
     const uploadResponse = response as {
       analysisStarted?: boolean;
       analyses?: Array<{ id: string }>;
-      results?: Array<{
-        success: boolean;
-        id?: string;
-        originalName?: string;
-        uploadedAt?: string;
-        [key: string]: unknown
-      }>;
     };
-    
-    // If analysis was auto-started, extract the analysis IDs and redirect
+
+    console.log('[UploadPage] Parsed response - analysisStarted:', uploadResponse.analysisStarted);
+    console.log('[UploadPage] Parsed response - analyses:', uploadResponse.analyses);
+
     if (uploadResponse.analysisStarted && uploadResponse.analyses) {
       const newAnalysisIds = uploadResponse.analyses.map((a) => a.id);
+      console.log('[UploadPage] Analysis IDs extracted:', newAnalysisIds);
+      
       Logger.info('[UploadPage] Auto-analysis started, redirecting to history with', newAnalysisIds.length, 'analyses');
       setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
-      alert("Analysis has started and can take 5-10 minutes. You will be redirected to the call history page where you can see the progress.");
-      router.push('/call-history');
-    } else if (uploadResponse.results) {
-      // Just update uploaded files - no configuration step needed
-      const successfulFiles = uploadResponse.results.filter((r) => r.success && r.id && r.originalName && r.uploadedAt);
-      const newFiles = successfulFiles as Array<{ id: string; originalName: string; uploadedAt: string; [key: string]: unknown }>;
-      setUploadedFiles(prev => [...newFiles, ...prev]);
-      // Files uploaded but no auto-analysis, stay on upload step
+      
+      console.log('[UploadPage] Showing toast notification...');
+      toast.info("Analysis has started and can take 5-10 minutes. You will be redirected to the call history page where you can see the progress.");
+      
+      console.log('[UploadPage] Setting timeout for redirection...');
+      setTimeout(() => {
+        console.log('[UploadPage] REDIRECTING TO CALL HISTORY PAGE');
+        router.push('/call-history');
+      }, 3000); // Delay for toast visibility
+    } else {
+      console.log('[UploadPage] NOT redirecting - analysisStarted:', uploadResponse.analysisStarted, 'analyses:', uploadResponse.analyses);
     }
     
-    // Reload uploaded files to get the latest state
+    console.log('[UploadPage] Reloading uploaded files...');
     loadUploadedFiles();
-  };
-
-  const handleAnalysisStart = (newAnalysisIds: string[]) => {
-    Logger.info('[UploadPage] Analysis started for', newAnalysisIds.length, 'files');
-    setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
-    alert("Analysis has started and can take 5-10 minutes. You will be redirected to the call history page where you can see the progress.");
-    router.push('/call-history');
   };
 
   const getStepStatus = (step: AppStep) => {
@@ -153,7 +168,9 @@ export default function UploadPage() {
       case AppStep.UPLOAD:
         return (
           <FileUpload
-            onUploadComplete={handleUploadComplete}
+            onUploadsStart={handleUploadsStart}
+            onUploadComplete={handleFileUploadComplete}
+            onUploadsComplete={handleAllUploadsComplete}
             userId={user?.id || ''}
             maxFiles={MAX_FILES}
             maxFileSize={MAX_FILE_SIZE}
@@ -198,6 +215,27 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <Toaster richColors position="top-center" />
+      <header className="bg-white/80 backdrop-blur-sm shadow-sm sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Upload & Analyze</h1>
+              <p className="text-gray-600">Upload your sales call recordings and get AI-powered analysis</p>
+            </div>
+            <div className="hidden md:flex md:space-x-4">
+              <button
+                onClick={() => router.push('/account')}
+                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <User className="w-5 h-5" />
+                <span>Account</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
       {/* Chatbot */}
       {showChatbot && (
         <Chatbot
@@ -208,12 +246,6 @@ export default function UploadPage() {
       
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Upload & Analyze</h1>
-          <p className="text-gray-600">Upload your sales call recordings and get AI-powered analysis</p>
-        </div>
-
         {/* Process Steps */}
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
@@ -247,6 +279,28 @@ export default function UploadPage() {
 
         {/* Step Content */}
         <div className="mb-8">
+          {/* Upload Status Display */}
+          {filesUploading && (
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h3 className="text-lg font-medium text-blue-800 mb-2">Upload Progress</h3>
+              <div className="space-y-2">
+                {Object.values(fileStatuses).map((file: any) => (
+                  <div key={file.id} className="flex items-center justify-between p-2 bg-white rounded border">
+                    <span className="text-sm font-medium text-gray-700">{file.file?.name || 'Unknown file'}</span>
+                    <span className={`text-sm px-2 py-1 rounded ${
+                      file.status === 'success' ? 'bg-green-100 text-green-800' :
+                      file.status === 'error' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {file.status === 'success' ? (file.analysisTriggered ? 'Analysis Started' : 'Uploaded') : 
+                       file.status === 'error' ? 'Failed' : 'Processing...'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
           {loading ? (
             <div className="flex justify-center items-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>

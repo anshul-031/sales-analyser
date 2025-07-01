@@ -15,7 +15,9 @@ import {
 } from '@/lib/audio-compression';
 
 interface FileUploadProps {
-  onUploadComplete: (response: unknown) => void;
+  onUploadsStart: () => void;
+  onUploadComplete: (result: { success: boolean; file: UploadFile; analysisId?: string }) => void;
+  onUploadsComplete: (response: unknown) => void;
   userId: string;
   maxFiles?: number;
   maxFileSize?: number;
@@ -35,10 +37,14 @@ interface UploadFile {
   compressionRatio?: number;
   audioCompressionUsed?: boolean;
   originalAudioSize?: number;
+  analysisTriggered?: boolean;
+  analysisId?: string;
 }
 
 export default function FileUpload({
+  onUploadsStart,
   onUploadComplete,
+  onUploadsComplete,
   userId,
   maxFiles = MAX_FILES,
   maxFileSize = MAX_FILE_SIZE
@@ -155,7 +161,85 @@ export default function FileUpload({
     setFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const uploadFile = async (uploadFile: UploadFile) => {
+  const uploadAllFiles = async () => {
+    if (files.filter(f => f.status === 'pending').length === 0) {
+      console.log('[FileUpload] No files to upload.');
+      return;
+    }
+
+    console.log('[FileUpload] === STARTING UPLOAD PROCESS ===');
+    console.log('[FileUpload] Files to upload:', files.filter(f => f.status === 'pending').length);
+
+    setIsUploading(true);
+    onUploadsStart();
+    setErrorMessages([]);
+
+    const uploadPromises = files
+      .filter(f => f.status === 'pending')
+      .map(f => uploadFile(f));
+
+    console.log('[FileUpload] Waiting for all uploads to complete...');
+    const results = await Promise.all(uploadPromises);
+    console.log('[FileUpload] All upload promises resolved:', results.map(r => ({ success: r.success, uploadId: r.uploadId })));
+
+    setIsUploading(false);
+
+    const successfulUploads = results.filter(r => r.success);
+    console.log('[FileUpload] Successful uploads:', successfulUploads.length, 'out of', results.length);
+
+    if (successfulUploads.length > 0) {
+      // Automatically start analysis for all successful uploads
+      try {
+        const fileIds = successfulUploads.map(r => r.uploadId);
+        const enabledParameters = analysisParameters.filter(p => p.enabled);
+
+        console.log('[FileUpload] === STARTING ANALYSIS ===');
+        console.log('[FileUpload] File IDs for analysis:', fileIds);
+        console.log('[FileUpload] Enabled parameters:', enabledParameters.length);
+
+        const response = await fetch('/api/analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            fileIds,
+            parameters: enabledParameters,
+            userId,
+          }),
+        });
+
+        console.log('[FileUpload] Analysis API response status:', response.status);
+        const analysisResult = await response.json();
+        console.log('[FileUpload] Analysis API response:', JSON.stringify(analysisResult, null, 2));
+
+        if (analysisResult.success) {
+          console.log('[FileUpload] Analysis started successfully:', analysisResult.analyses);
+          setFiles(prev => prev.map(f => 
+            fileIds.includes(f.uploadId) ? { ...f, status: 'success', analysisTriggered: true } : f
+          ));
+          
+          const callbackData = { 
+            analysisStarted: true, 
+            analyses: analysisResult.analyses 
+          };
+          console.log('[FileUpload] Calling onUploadsComplete with:', JSON.stringify(callbackData, null, 2));
+          onUploadsComplete(callbackData);
+        } else {
+          console.error('[FileUpload] Analysis failed:', analysisResult.error);
+          setErrorMessages(prev => [...prev, `Analysis failed: ${analysisResult.error}`]);
+          onUploadsComplete({ analysisStarted: false });
+        }
+      } catch (error) {
+        console.error('[FileUpload] Error starting analysis:', error);
+        setErrorMessages(prev => [...prev, 'An error occurred while starting the analysis.']);
+        onUploadsComplete({ analysisStarted: false });
+      }
+    } else {
+      console.log('[FileUpload] No successful uploads, not starting analysis');
+      onUploadsComplete({ analysisStarted: false });
+    }
+  };
+
+  const uploadFile = async (uploadFile: UploadFile): Promise<{ success: boolean; uploadId?: string; error?: string; analysisId?: string }> => {
     let uploadId: string | null = null;
     let fileKey: string | null = null;
 
@@ -309,32 +393,36 @@ export default function FileUpload({
             }),
         });
 
-        const result = await completeResponse.json();
-        if (!result.success) throw new Error('Failed to complete upload');
+        const completeResult = await completeResponse.json();
 
-        setFiles(prev => prev.map(f => {
-          const uploadResult = result.results.find((r: any) => r.filename === finalCompressedFile.name);
-          if (f.id === uploadFile.id && uploadResult) {
-            return {
-              ...f,
-              status: uploadResult.success ? 'success' as const : 'error' as const,
-              error: uploadResult.error,
-              uploadId: uploadResult.id,
-              uploadDuration: uploadResult.uploadDuration,
-            };
-          }
-          return f;
-        }));
+        if (completeResult.success) {
+          const uploadDuration = (Date.now() - startTime) / 1000;
+          const updatedFile = { 
+            ...uploadFile, 
+            status: 'success' as const, 
+            progress: 100,
+            uploadDuration,
+            uploadId: completeResult.uploadId,
+            analysisId: completeResult.analysisId,
+            analysisTriggered: !!completeResult.analysisId,
+          };
+          setFiles(prev => prev.map(f => f.id === uploadFile.id ? updatedFile : f));
+          onUploadComplete({ success: true, file: updatedFile, analysisId: completeResult.analysisId });
+          console.log('[FileUpload] File upload success:', uploadFile.id);
+          return { success: true, uploadId: completeResult.uploadId, analysisId: completeResult.analysisId };
+        } else {
+          throw new Error(completeResult.error || 'Failed to complete upload');
+        }
 
-        onUploadComplete(result);
-
-    } catch (error) {
+    } catch (error: any) {
         console.error('[FileUpload] Error processing file:', uploadFile.file.name, error);
-        setFiles(prev => prev.map(f => f.id === uploadFile.id ? {
-            ...f,
-            status: 'error',
+        const errorFile = {
+            ...uploadFile,
+            status: 'error' as const,
             error: error instanceof Error ? error.message : 'Failed to compress or upload file'
-        } : f));
+        };
+        setFiles(prev => prev.map(f => f.id === uploadFile.id ? errorFile : f));
+        onUploadComplete({ success: false, file: errorFile });
 
         if (uploadId && fileKey) {
             await fetch('/api/upload-large', {
@@ -347,50 +435,37 @@ export default function FileUpload({
                 }),
             });
         }
+
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
-};
+  }
 
-  const uploadFiles = async () => {
-    if (files.length === 0) return;
-
-    console.log('[FileUpload] Starting upload process for', files.length, 'files');
-    setIsUploading(true);
-
-    const filesToUpload = files.filter(f => f.status === 'pending');
-    for (const file of filesToUpload) {
-      await uploadFile(file);
-    }
-
-    setIsUploading(false);
-  };
-
-  const clearSuccessfulFiles = () => {
-    setFiles(prev => prev.filter(f => f.status !== 'success'));
-  };
-
-  const getStatusIcon = (status: string, audioCompressionUsed?: boolean) => {
-    switch (status) {
-      case 'success':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'error':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+  const renderFileStatus = (file: UploadFile) => {
+    switch (file.status) {
+      case 'pending':
+        return <span className="text-gray-500">Pending</span>;
       case 'compressing':
-        return audioCompressionUsed ? 
-          <Zap className="w-4 h-4 text-purple-500 animate-pulse" /> :
-          <Wind className="w-4 h-4 text-blue-500 animate-pulse" />;
+        return <span className="text-blue-500 flex items-center"><Loader2 className="animate-spin mr-2 h-4 w-4" />Compressing...</span>;
       case 'uploading':
-        return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
+        return (
+          <div className="w-full">
+            <span className="text-blue-500">Uploading... {file.progress?.toFixed(0)}%</span>
+            <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+              <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${file.progress || 0}%` }}></div>
+            </div>
+          </div>
+        );
+      case 'success':
+        return <span className="text-green-500 flex items-center"><CheckCircle className="mr-2 h-4 w-4" />{file.analysisTriggered ? 'Analysis Triggered' : 'Uploaded'}</span>;
+      case 'error':
+        return <span className="text-red-500 flex items-center"><AlertCircle className="mr-2 h-4 w-4" />Error</span>;
       default:
-        return <FileAudio className="w-4 h-4 text-gray-500" />;
+        return null;
     }
   };
-
-  const pendingFiles = files.filter(f => f.status === 'pending').length;
-  const successfulFiles = files.filter(f => f.status === 'success').length;
-  const errorFiles = files.filter(f => f.status === 'error').length;
 
   return (
-    <div className="w-full max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-lg">
+    <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-4xl mx-auto my-8">
       <h2 className="text-2xl font-bold text-gray-800 mb-6">Upload Audio Files</h2>
       
       {/* Drop Zone */}
@@ -449,295 +524,160 @@ export default function FileUpload({
         </div>
       )}
 
-      {/* File List */}
       {files.length > 0 && (
-        <div className="mt-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-700">
-              Selected Files ({files.length})
-            </h3>
-            {successfulFiles > 0 && (
+        <div className="mt-8">
+          <h3 className="text-xl font-semibold text-gray-800 mb-4">Selected Files</h3>
+          <ul className="space-y-4">
+            {files.map(f => (
+              <li key={f.id} className="bg-gray-50 p-4 rounded-lg flex items-center justify-between space-x-4 shadow-sm">
+                <div className="flex items-center space-x-4 flex-grow">
+                  <FileAudio className="h-8 w-8 text-blue-500" />
+                  <div className="flex-grow">
+                    <p className="font-medium text-gray-800 truncate">{f.file.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {formatFileSize(f.file.size)}
+                      {f.status === 'success' && f.uploadDuration && ` - Uploaded in ${f.uploadDuration.toFixed(1)}s`}
+                      {f.status === 'error' && f.error && <span className="text-red-500 ml-2">- {f.error}</span>}
+                    </p>
+                  </div>
+                </div>
+                <div className="w-48 text-sm">
+                  {renderFileStatus(f)}
+                </div>
+                <button 
+                  onClick={() => removeFile(f.id)} 
+                  className="text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isUploading}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Analysis Parameters Section */}
+      <div className="mt-8">
+        <h3 className="text-lg font-semibold text-gray-700 mb-4">
+          Analysis Parameters ({analysisParameters.filter(p => p.enabled).length} selected)
+        </h3>
+        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <Target className="w-5 h-5 text-blue-600" />
+              <h3 className="font-semibold text-blue-800">Analysis Parameters</h3>
+            </div>
+            <div className="flex space-x-2">
               <button
-                onClick={clearSuccessfulFiles}
-                className="text-sm text-blue-600 hover:text-blue-800"
+                onClick={() => setShowParameterDetails(!showParameterDetails)}
+                className="text-xs text-blue-600 hover:text-blue-800 flex items-center space-x-1"
               >
-                Clear Successful
+                {showParameterDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                <span>{showParameterDetails ? 'Hide' : 'Edit'}</span>
               </button>
-            )}
+              <button
+                onClick={addNewParameter}
+                className="text-xs text-green-600 hover:text-green-800 flex items-center space-x-1"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add</span>
+              </button>
+            </div>
           </div>
           
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {files.map((fileItem) => (
-              <div key={fileItem.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center space-x-3 flex-1">
-                  {getStatusIcon(fileItem.status, fileItem.audioCompressionUsed)}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-700 truncate">
-                      {fileItem.file.name}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {formatFileSize(fileItem.file.size)}
-                      {fileItem.originalAudioSize && fileItem.audioCompressionUsed && (
-                        <span className="ml-2 text-xs text-purple-600">
-                          (Audio: {formatFileSize(fileItem.originalAudioSize)} → {formatFileSize(fileItem.originalAudioSize * (1 - (fileItem.compressionRatio || 0)))})
-                        </span>
-                      )}
-                      {fileItem.compressedSize && (
-                        <span className="ml-2 text-xs text-green-600">
-                          (Final: {formatFileSize(fileItem.compressedSize)})
-                        </span>
-                      )}
-                    </p>
-                    {fileItem.uploadDuration && (
-                        <p className="text-xs text-gray-500">
-                            Upload time: {(fileItem.uploadDuration / 1000).toFixed(2)}s
-                        </p>
-                    )}
-                    {fileItem.error && (
-                      <p className="text-xs text-red-500 mt-1">{fileItem.error}</p>
-                    )}
-                    {fileItem.status === 'compressing' && (
-                      <p className="text-xs text-purple-500 mt-1">
-                        {fileItem.audioCompressionUsed ? 'Applying audio compression...' : 'Compressing file...'}
-                      </p>
-                    )}
-                     {fileItem.status === 'uploading' && fileItem.progress !== undefined && (
-                      <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                        <div
-                          className="bg-blue-600 h-1.5 rounded-full"
-                          style={{ width: `${fileItem.progress}%` }}
-                        ></div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                {(fileItem.status === 'pending' || fileItem.status === 'error') && (
-                  <button
-                    onClick={() => removeFile(fileItem.id)}
-                    className="p-1 text-gray-400 hover:text-red-500"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+          <p className="text-sm text-blue-700 mb-3">
+            Configure which aspects will be analyzed in your sales calls:
+          </p>
 
-          {/* Status Summary */}
-          {(successfulFiles > 0 || errorFiles > 0) && (
-            <div className="mt-4 p-3 bg-gray-100 rounded-lg">
-              <div className="flex justify-between text-sm">
-                {successfulFiles > 0 && (
-                  <span className="text-green-600">✓ {successfulFiles} successful</span>
-                )}
-                {errorFiles > 0 && (
-                  <span className="text-red-600">✗ {errorFiles} failed</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Audio Compression Settings */}
-          {pendingFiles > 0 && (
-            <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-2">
-                  <Zap className="w-5 h-5 text-purple-600" />
-                  <h3 className="font-semibold text-purple-800">Audio Compression</h3>
-                  <input
-                    type="checkbox"
-                    checked={enableAudioCompression}
-                    onChange={(e) => setEnableAudioCompression(e.target.checked)}
-                    className="w-4 h-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                  />
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setShowCompressionSettings(!showCompressionSettings)}
-                    className="text-xs text-purple-600 hover:text-purple-800 flex items-center space-x-1"
-                  >
-                    <Settings className="w-3 h-3" />
-                    <span>{showCompressionSettings ? 'Hide' : 'Settings'}</span>
-                  </button>
-                </div>
-              </div>
-              
-              <p className="text-sm text-purple-700 mb-3">
-                {enableAudioCompression 
-                  ? `Maximum audio compression enabled (${compressionSettings} preset). This will significantly reduce file sizes while maintaining call quality.`
-                  : "Audio compression is disabled. Files will be uploaded with basic gzip compression only."
-                }
-              </p>
-
-              {enableAudioCompression && showCompressionSettings && (
-                <div className="space-y-3 pt-3 border-t border-purple-200">
+          {!showParameterDetails ? (
+            // Compact view - just show enabled parameters
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {analysisParameters.filter(p => p.enabled).map((param) => (
+                <div key={param.id} className="flex items-start space-x-2 text-sm">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0"></div>
                   <div>
-                    <label className="block text-sm font-medium text-purple-700 mb-2">
-                      Compression Level
-                    </label>
-                    <select
-                      value={compressionSettings}
-                      onChange={(e) => setCompressionSettings(e.target.value as keyof typeof COMPRESSION_PRESETS)}
-                      className="w-full px-3 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
-                    >
-                      <option value="MAXIMUM">Maximum (16kbps, mono, 11kHz) - Extreme compression</option>
-                      <option value="HIGH">High (32kbps, mono, 16kHz) - Very high compression</option>
-                      <option value="MEDIUM">Medium (64kbps, mono, 22kHz) - High compression</option>
-                      <option value="LOW">Low (96kbps, mono, 44kHz) - Moderate compression</option>
-                    </select>
+                    <span className="font-medium text-blue-800">{param.name}</span>
+                    <p className="text-blue-600 text-xs mt-0.5">{param.description}</p>
                   </div>
-                  
-                  {pendingFiles > 0 && (
-                    <div className="bg-purple-100 p-3 rounded-lg">
-                      <h4 className="text-sm font-medium text-purple-800 mb-2">Estimated Compression</h4>
-                      <div className="space-y-1 text-xs text-purple-700">
-                        {files.filter(f => f.status === 'pending').map((file) => {
-                          const estimatedRatio = AudioCompressor.estimateCompressionRatio(file.file, COMPRESSION_PRESETS[compressionSettings]);
-                          const estimatedSize = file.file.size * (1 - estimatedRatio);
-                          return (
-                            <div key={file.id} className="flex justify-between">
-                              <span className="truncate">{file.file.name}</span>
-                              <span>{formatFileSize(file.file.size)} → {formatFileSize(estimatedSize)} ({(estimatedRatio * 100).toFixed(0)}% reduction)</span>
-                            </div>
-                          );
-                        })}
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Detailed editable view
+            <div className="space-y-3">
+              {analysisParameters.map((param) => (
+                <div key={param.id} className="border border-blue-200 rounded-lg p-3 bg-white">
+                  {editingParameter === param.id ? (
+                    <EditParameterForm
+                      parameter={param}
+                      onSave={(updates) => handleParameterEdit(param.id, updates)}
+                      onCancel={() => setEditingParameter(null)}
+                    />
+                  ) : (
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-3 flex-1">
+                        <input
+                          type="checkbox"
+                          checked={param.enabled}
+                          onChange={() => handleParameterToggle(param.id)}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 mt-1"
+                        />
+                        <div className="flex-1">
+                          <h4 className={`font-medium text-sm ${param.enabled ? 'text-gray-800' : 'text-gray-500'}`}>
+                            {param.name}
+                          </h4>
+                          <p className={`text-xs mt-1 ${param.enabled ? 'text-gray-600' : 'text-gray-400'}`}>
+                            {param.description}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex space-x-1 ml-2">
+                        <button
+                          onClick={() => setEditingParameter(param.id)}
+                          className="p-1 text-gray-400 hover:text-blue-600"
+                          title="Edit parameter"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                        {param.id.startsWith('custom_') && (
+                          <button
+                            onClick={() => removeParameter(param.id)}
+                            className="p-1 text-gray-400 hover:text-red-600"
+                            title="Remove parameter"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
-              )}
+              ))}
             </div>
           )}
+        </div>
+      </div>
 
-          {/* Analysis Parameters Configuration */}
-          {pendingFiles > 0 && (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-2">
-                  <Target className="w-5 h-5 text-blue-600" />
-                  <h3 className="font-semibold text-blue-800">Analysis Parameters</h3>
-                  <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                    {analysisParameters.filter(p => p.enabled).length} selected
-                  </span>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setShowParameterDetails(!showParameterDetails)}
-                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center space-x-1"
-                  >
-                    {showParameterDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    <span>{showParameterDetails ? 'Hide' : 'Edit'}</span>
-                  </button>
-                  <button
-                    onClick={addNewParameter}
-                    className="text-xs text-green-600 hover:text-green-800 flex items-center space-x-1"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Add</span>
-                  </button>
-                </div>
-              </div>
-              
-              <p className="text-sm text-blue-700 mb-3">
-                Configure which aspects will be analyzed in your sales calls:
-              </p>
-
-              {!showParameterDetails ? (
-                // Compact view - just show enabled parameters
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {analysisParameters.filter(p => p.enabled).map((param) => (
-                    <div key={param.id} className="flex items-start space-x-2 text-sm">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 flex-shrink-0"></div>
-                      <div>
-                        <span className="font-medium text-blue-800">{param.name}</span>
-                        <p className="text-blue-600 text-xs mt-0.5">{param.description}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                // Detailed editable view
-                <div className="space-y-3">
-                  {analysisParameters.map((param) => (
-                    <div key={param.id} className="border border-blue-200 rounded-lg p-3 bg-white">
-                      {editingParameter === param.id ? (
-                        <EditParameterForm
-                          parameter={param}
-                          onSave={(updates) => handleParameterEdit(param.id, updates)}
-                          onCancel={() => setEditingParameter(null)}
-                        />
-                      ) : (
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-start space-x-3 flex-1">
-                            <input
-                              type="checkbox"
-                              checked={param.enabled}
-                              onChange={() => handleParameterToggle(param.id)}
-                              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 mt-1"
-                            />
-                            <div className="flex-1">
-                              <h4 className={`font-medium text-sm ${param.enabled ? 'text-gray-800' : 'text-gray-500'}`}>
-                                {param.name}
-                              </h4>
-                              <p className={`text-xs mt-1 ${param.enabled ? 'text-gray-600' : 'text-gray-400'}`}>
-                                {param.description}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex space-x-1 ml-2">
-                            <button
-                              onClick={() => setEditingParameter(param.id)}
-                              className="p-1 text-gray-400 hover:text-blue-600"
-                              title="Edit parameter"
-                            >
-                              <Edit3 className="w-3 h-3" />
-                            </button>
-                            {param.id.startsWith('custom_') && (
-                              <button
-                                onClick={() => removeParameter(param.id)}
-                                className="p-1 text-gray-400 hover:text-red-600"
-                                title="Remove parameter"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Upload Button */}
-          {pendingFiles > 0 && (
-            <div className="mt-4">
-              <button
-                onClick={uploadFiles}
-                disabled={isUploading}
-                className={`
-                  w-full py-3 px-4 rounded-lg font-medium transition-colors
-                  ${isUploading
-                    ? 'bg-blue-300 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                  }
-                  text-white
-                `}
-              >
-                {isUploading ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Uploading & Analyzing {files.length} files...</span>
-                  </div>
-                ) : (
-                 `Upload & Analyze ${pendingFiles} Files`
-               )}
-              </button>
-            </div>
-          )}
+      {files.length > 0 && (
+        <div className="mt-8 pt-8 border-t border-gray-200 flex justify-end">
+          <button
+            onClick={uploadAllFiles}
+            disabled={isUploading || files.filter(f => f.status === 'pending').length === 0}
+            className="flex items-center justify-center px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            {isUploading ? (
+              <>
+                <Loader2 className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
+                Uploading...
+              </>
+            ) : (
+              <>
+                <Upload className="-ml-1 mr-3 h-5 w-5" />
+                Upload and Analyze {files.filter(f => f.status === 'pending').length} File(s)
+              </>
+            )}
+          </button>
         </div>
       )}
     </div>

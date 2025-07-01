@@ -18,6 +18,11 @@ const navigationItems = [
     icon: Upload
   },
   {
+    name: 'Call History',
+    href: '/call-history',
+    icon: FileAudio
+  },
+  {
     name: 'Call Analysis',
     href: '/call-analysis',
     icon: FileAudio
