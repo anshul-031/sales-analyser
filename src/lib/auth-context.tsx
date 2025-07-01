@@ -68,17 +68,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } else {
           setUser(null); // Explicitly clear user if auth check fails but response is ok
           console.log('[Auth] Auth check failed, user cleared.');
+          // Clear invalid cookie
+          await clearInvalidCookie();
         }
       } else {
         setUser(null); // Explicitly clear user on non-ok responses (e.g. 401)
         console.log('[Auth] Auth check failed with non-ok response, user cleared.');
+        // Clear invalid cookie when authentication fails
+        await clearInvalidCookie();
       }
     } catch (error) {
       console.error('[Auth] Auth check error:', error);
       setUser(null); // Also clear user on network errors
+      // Clear invalid cookie on network errors too
+      await clearInvalidCookie();
     } finally {
       setLoading(false);
       console.log('[Auth] Finished auth check.');
+    }
+  };
+
+  const clearInvalidCookie = async () => {
+    try {
+      console.log('[Auth] Clearing invalid authentication cookie...');
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      console.log('[Auth] Invalid cookie cleared.');
+    } catch (error) {
+      console.error('[Auth] Error clearing invalid cookie:', error);
     }
   };
 
