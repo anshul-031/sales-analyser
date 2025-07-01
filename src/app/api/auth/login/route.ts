@@ -34,6 +34,12 @@ import { comparePassword, generateToken, isValidEmail, createAuthResponse } from
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: Email verification required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 export async function POST(request: NextRequest) {
   try {
@@ -73,6 +79,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, message: 'Invalid email or password' },
         { status: 401 }
+      );
+    }
+
+    // Check if email is verified
+    if (!user.isEmailVerified) {
+      return NextResponse.json(
+        { success: false, message: 'Please verify your email address before logging in. Check your inbox for a verification link.' },
+        { status: 403 }
       );
     }
 
