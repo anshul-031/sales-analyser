@@ -54,10 +54,13 @@ export async function GET(request: NextRequest) {
 }
 
 async function extractAPIEndpoints(): Promise<APIEndpoint[]> {
-  const apiPath = path.join(process.cwd(), 'src', 'app', 'api');
+  const isProduction = process.env.NODE_ENV === 'production';
+  const apiPath = isProduction
+    ? path.join(process.cwd(), '.next/server/app/api')
+    : path.join(process.cwd(), 'src', 'app', 'api');
   const endpoints: APIEndpoint[] = [];
 
-  // Recursively find all route.ts files
+  // Recursively find all route.ts or route.js files
   const routeFiles = await findRouteFiles(apiPath);
   
   for (const filePath of routeFiles) {
@@ -77,6 +80,7 @@ async function extractAPIEndpoints(): Promise<APIEndpoint[]> {
 
 async function findRouteFiles(dir: string): Promise<string[]> {
   const files: string[] = [];
+  const isProduction = process.env.NODE_ENV === 'production';
   
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -88,7 +92,7 @@ async function findRouteFiles(dir: string): Promise<string[]> {
         // Recursively search subdirectories
         const subFiles = await findRouteFiles(fullPath);
         files.push(...subFiles);
-      } else if (entry.name === 'route.ts') {
+      } else if (isProduction ? entry.name === 'route.js' : entry.name === 'route.ts') {
         files.push(fullPath);
       }
     }
