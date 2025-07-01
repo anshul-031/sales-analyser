@@ -10,12 +10,14 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle,
-  XCircle
+  XCircle,
+  MessageCircle
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import { Logger } from '@/lib/utils';
 import AnalysisDisplay from '@/components/AnalysisDisplay';
+import Chatbot from '@/components/Chatbot';
 
 interface CallRecording {
   id: string;
@@ -72,6 +74,7 @@ export default function CallHistoryPage() {
   const [translating, setTranslating] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState('en');
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
+  const [showChatbot, setShowChatbot] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -190,6 +193,10 @@ export default function CallHistoryPage() {
     // Clear translation when switching tabs
     if (tab !== 'transcription') {
       setTranslatedText('');
+    }
+    // Close chatbot when switching to other tabs
+    if (tab !== 'chat') {
+      setShowChatbot(false);
     }
   };
 
@@ -365,6 +372,10 @@ export default function CallHistoryPage() {
                 </button>
                 <button onClick={() => handleTabChange('transcription')} className={`px-4 py-2 text-sm rounded-md ${activeTab === 'transcription' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
                   <FileText className="w-4 h-4 inline-block mr-2"/>Transcription
+                </button>
+                <button onClick={() => handleTabChange('chat')} className={`px-4 py-2 text-sm rounded-md ${activeTab === 'chat' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'} relative`}>
+                  <MessageCircle className="w-4 h-4 inline-block mr-2"/>AI Chat
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
                 </button>
                 <button onClick={downloadAnalysisJson} className="px-4 py-2 text-sm rounded-md bg-gray-200 text-gray-700">
                   <Download className="w-4 h-4 inline-block mr-2"/>Download JSON
@@ -699,8 +710,105 @@ export default function CallHistoryPage() {
                         </div>
                       );
                     }
+                    if (activeTab === 'chat') {
+                      console.log('[CallHistory] Rendering chat tab');
+                      return (
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full">
+                          <div className="p-4 border-b border-gray-200 bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                  <MessageCircle className="w-5 h-5" />
+                                  AI Chat Assistant
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Ask questions about "{selectedRecording.originalName}" call recording
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-6 h-full">
+                            <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <MessageCircle className="w-5 h-5 text-blue-600" />
+                                <span className="font-semibold text-blue-800">Chat about this call</span>
+                              </div>
+                              <p className="text-blue-700 text-sm">
+                                Ask me anything about this call recording! I can help you understand the transcription, 
+                                analysis results, key points, customer sentiment, and provide insights for improvement.
+                              </p>
+                            </div>
+                            
+                            <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                              <h4 className="font-semibold text-gray-800 mb-2">💡 Try asking:</h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                                <div className="space-y-1">
+                                  <div className="text-gray-600">• "What was the main topic discussed?"</div>
+                                  <div className="text-gray-600">• "How did the customer respond?"</div>
+                                  <div className="text-gray-600">• "What objections were raised?"</div>
+                                  <div className="text-gray-600">• "What were the key outcomes?"</div>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="text-gray-600">• "What was the overall sentiment?"</div>
+                                  <div className="text-gray-600">• "How can I improve next time?"</div>
+                                  <div className="text-gray-600">• "What questions did I ask?"</div>
+                                  <div className="text-gray-600">• "Did I close properly?"</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-center">
+                              <button
+                                onClick={() => setShowChatbot(true)}
+                                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                              >
+                                <MessageCircle className="w-5 h-5" />
+                                Start Chat
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
                   } else if (analysis.status === 'FAILED') {
                     console.log('[CallHistory] Analysis failed');
+                    if (activeTab === 'chat') {
+                      return (
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full">
+                          <div className="p-4 border-b border-gray-200 bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                  <MessageCircle className="w-5 h-5" />
+                                  AI Chat Assistant
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Chat about "{selectedRecording.originalName}" call recording
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-6">
+                            <div className="bg-amber-50 p-4 rounded-lg mb-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                                <span className="font-semibold text-amber-800">Limited Chat Available</span>
+                              </div>
+                              <p className="text-amber-700 text-sm mb-4">
+                                Analysis failed for this recording, but you can still ask general questions about the file.
+                              </p>
+                              <button
+                                onClick={() => setShowChatbot(true)}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                                Start Chat
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
                     return (
                       <div className="bg-red-50 border border-red-200 rounded-lg p-6">
                         <div className="flex items-center text-red-600 mb-2">
@@ -714,6 +822,43 @@ export default function CallHistoryPage() {
                     );
                   } else {
                     console.log('[CallHistory] Analysis in progress, status:', analysis.status);
+                    if (activeTab === 'chat') {
+                      return (
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full">
+                          <div className="p-4 border-b border-gray-200 bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                  <MessageCircle className="w-5 h-5" />
+                                  AI Chat Assistant
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Chat about "{selectedRecording.originalName}" call recording
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-6">
+                            <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                                <span className="font-semibold text-blue-800">Analysis in Progress</span>
+                              </div>
+                              <p className="text-blue-700 text-sm mb-4">
+                                Your call is being analyzed. You can still start a chat, but detailed insights will be limited until analysis completes.
+                              </p>
+                              <button
+                                onClick={() => setShowChatbot(true)}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                                Start Chat
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
                     return (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
                         <div className="flex items-center text-blue-600 mb-2">
@@ -742,9 +887,29 @@ export default function CallHistoryPage() {
                     <AlertTriangle className="w-5 h-5 mr-2"/>
                     <h3 className="font-semibold">No Analysis Available</h3>
                   </div>
-                  <p className="text-gray-600">
+                  <p className="text-gray-600 mb-4">
                     This recording has not been analyzed yet. Please upload it for analysis first.
                   </p>
+                  
+                  {/* Still allow chat even without analysis */}
+                  {activeTab === 'chat' && (
+                    <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <MessageCircle className="w-5 h-5 text-blue-600" />
+                        <span className="font-semibold text-blue-800">Limited Chat Available</span>
+                      </div>
+                      <p className="text-blue-700 text-sm mb-4">
+                        You can still chat about this recording, but detailed analysis insights won't be available.
+                      </p>
+                      <button
+                        onClick={() => setShowChatbot(true)}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        Start Chat
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -755,6 +920,15 @@ export default function CallHistoryPage() {
           </div>
         )}
       </div>
+      
+      {/* Chatbot */}
+      {showChatbot && selectedRecording && user && (
+        <Chatbot
+          userId={user.id}
+          uploadId={selectedRecording.id}
+          onClose={() => setShowChatbot(false)}
+        />
+      )}
     </div>
   );
 }
