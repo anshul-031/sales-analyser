@@ -27,10 +27,38 @@ interface CallRecording {
   analyses?: Array<{
     id:string;
     status: string;
-    transcription?: string;
-    analysisResult?: any;
+    transcription?: string | DiarizedTranscription;
+    analysisResult?: AnalysisResult;
     createdAt: string;
   }>;
+}
+
+interface SpeakerSentiment {
+  speaker: string;
+  sentiment: string;
+}
+
+interface SpeakerTone {
+  speaker: string;
+  tone: string;
+}
+
+interface AnalysisResult {
+  speaker_mapping?: { [key: string]: string };
+  sentiment_analysis?: SpeakerSentiment[];
+  tone_analysis?: SpeakerTone[];
+  [key: string]: any;
+}
+
+interface TranscriptionSegment {
+    speaker: string;
+    text: string;
+    timestamp?: string;
+}
+
+interface DiarizedTranscription {
+    original_language?: string;
+    diarized_transcription: TranscriptionSegment[];
 }
 
 export default function CallHistoryPage() {
@@ -43,6 +71,7 @@ export default function CallHistoryPage() {
   const [translatedText, setTranslatedText] = useState<string>('');
   const [translating, setTranslating] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState('en');
+  const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -357,10 +386,10 @@ export default function CallHistoryPage() {
                       return <AnalysisDisplay analysisResult={analysis.analysisResult} />;
                     }
                     if (activeTab === 'transcription') {
-                      console.log('[CallHistory] Rendering transcription tab with data:', analysis.transcription?.substring ? analysis.transcription?.substring(0, 100) + '...' : analysis.transcription);
+                      const loggableTranscription = typeof analysis.transcription === 'string' ? analysis.transcription.substring(0,100) + '...' : '[Object]';
+                      console.log('[CallHistory] Rendering transcription tab with data:', loggableTranscription);
                       
-                      // Check if transcription is a string or object
-                      let transcriptionData: any = analysis.transcription;
+                      let transcriptionData: string | DiarizedTranscription | undefined = analysis.transcription;
                       if (typeof transcriptionData === 'string') {
                         try {
                           transcriptionData = JSON.parse(transcriptionData);
@@ -368,6 +397,118 @@ export default function CallHistoryPage() {
                           // If it's not valid JSON, treat as plain text
                         }
                       }
+
+                      const analysisResult = analysis.analysisResult;
+                      console.log('[CallHistory] Analysis Result for Transcription Tab:', analysisResult);
+
+                      // Extract sentiment and tone data directly from transcription if available
+                      let sentimentAnalysis: SpeakerSentiment[] = [];
+                      let toneAnalysis: SpeakerTone[] = [];
+                      let speakerMapping: { [key: string]: string } = {};
+                      let customerName: string | undefined;
+
+                      // If transcription data contains sentiment and tone per segment, aggregate by speaker
+                      if (typeof transcriptionData === 'object' && transcriptionData?.diarized_transcription) {
+                        const speakerSentiments: { [key: string]: string[] } = {};
+                        const speakerTones: { [key: string]: string[] } = {};
+                        
+                        transcriptionData.diarized_transcription.forEach((segment: any) => {
+                          if (segment.sentiment) {
+                            if (!speakerSentiments[segment.speaker]) speakerSentiments[segment.speaker] = [];
+                            speakerSentiments[segment.speaker].push(segment.sentiment);
+                          }
+                          if (segment.tone) {
+                            if (!speakerTones[segment.speaker]) speakerTones[segment.speaker] = [];
+                            speakerTones[segment.speaker].push(segment.tone);
+                          }
+                        });
+
+                        // Calculate dominant sentiment and tone per speaker
+                        Object.keys(speakerSentiments).forEach(speaker => {
+                          const sentiments = speakerSentiments[speaker];
+                          const dominantSentiment = sentiments.reduce((a, b, _, arr) => 
+                            arr.filter(v => v === a).length >= arr.filter(v => v === b).length ? a : b
+                          );
+                          sentimentAnalysis.push({ speaker, sentiment: dominantSentiment });
+                        });
+
+                        Object.keys(speakerTones).forEach(speaker => {
+                          const tones = speakerTones[speaker];
+                          const dominantTone = tones.reduce((a, b, _, arr) => 
+                            arr.filter(v => v === a).length >= arr.filter(v => v === b).length ? a : b
+                          );
+                          toneAnalysis.push({ speaker, tone: dominantTone });
+                        });
+                      }
+
+                      // Try to predict speaker names based on conversation context
+                      if (typeof transcriptionData === 'object' && transcriptionData?.diarized_transcription && sentimentAnalysis.length > 0) {
+                        const speakers = [...new Set(transcriptionData.diarized_transcription.map((s: any) => s.speaker))];
+                        
+                        // Simple heuristic: Speaker with more professional/helpful tone is likely the agent
+                        speakers.forEach((speaker: string) => {
+                          const speakerSegments = transcriptionData.diarized_transcription.filter((s: any) => s.speaker === speaker);
+                          const avgLength = speakerSegments.reduce((sum: number, s: any) => sum + s.text.length, 0) / speakerSegments.length;
+                          
+                          // Look for keywords that suggest customer vs agent
+                          const customerKeywords = ['help', 'need', 'want', 'buy', 'purchase', 'issue', 'problem'];
+                          const agentKeywords = ['assist', 'provide', 'offer', 'recommend', 'company', 'service'];
+                          
+                          const speakerText = speakerSegments.map((s: any) => s.text).join(' ').toLowerCase();
+                          const customerScore = customerKeywords.filter(word => speakerText.includes(word)).length;
+                          const agentScore = agentKeywords.filter(word => speakerText.includes(word)).length;
+                          
+                          if (agentScore > customerScore) {
+                            speakerMapping[speaker] = 'Sales Agent';
+                          } else if (customerScore > agentScore) {
+                            speakerMapping[speaker] = 'Customer';
+                            // Try to extract a name if mentioned
+                            const nameMatch = speakerText.match(/my name is ([a-zA-Z]+)|i'm ([a-zA-Z]+)|this is ([a-zA-Z]+)/i);
+                            if (nameMatch) {
+                              const extractedName = nameMatch[1] || nameMatch[2] || nameMatch[3];
+                              speakerMapping[speaker] = extractedName;
+                              customerName = extractedName;
+                            }
+                          } else {
+                            speakerMapping[speaker] = speaker; // Keep original
+                          }
+                        });
+                      }
+
+                      // Fallback to analysis result data if transcription doesn't have the info
+                      if (sentimentAnalysis.length === 0) {
+                        sentimentAnalysis = analysisResult?.sentiment_analysis || 
+                                          analysisResult?.parameters?.sentiment_analysis || 
+                                          [];
+                      }
+                      
+                      if (toneAnalysis.length === 0) {
+                        toneAnalysis = analysisResult?.tone_analysis || 
+                                     analysisResult?.parameters?.tone_analysis || 
+                                     [];
+                      }
+                      
+                      if (Object.keys(speakerMapping).length === 0) {
+                        speakerMapping = analysisResult?.speaker_mapping || 
+                                       analysisResult?.parameters?.speaker_mapping || 
+                                       {};
+                      }
+                      
+                      if (!customerName) {
+                        customerName = analysisResult?.customer_name || 
+                                     analysisResult?.parameters?.customer_name;
+                      }
+
+                      console.log('[CallHistory] Sentiment Analysis Data:', sentimentAnalysis);
+                      console.log('[CallHistory] Tone Analysis Data:', toneAnalysis);
+                      console.log('[CallHistory] Speaker Mapping:', speakerMapping);
+                      console.log('[CallHistory] Customer Name:', customerName);
+
+                      const speakers: string[] = (typeof transcriptionData === 'object' && transcriptionData?.diarized_transcription) 
+                        ? [...new Set(transcriptionData.diarized_transcription.map((s: TranscriptionSegment) => s.speaker))] 
+                        : [];
+                      console.log('[CallHistory] Speakers found in transcription:', speakers);
+                      const isChatView = speakers.length === 2;
                       
                       return (
                         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -385,6 +526,17 @@ export default function CallHistoryPage() {
                               
                               {/* Translation Controls */}
                               <div className="flex items-center gap-3">
+                                {/* Toggle for detailed analysis */}
+                                <label className="flex items-center gap-2 text-sm text-gray-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={showDetailedAnalysis}
+                                    onChange={(e) => setShowDetailedAnalysis(e.target.checked)}
+                                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                  />
+                                  Show speaker tone, sentiment & confidence details
+                                </label>
+
                                 <select
                                   value={targetLanguage}
                                   onChange={(e) => setTargetLanguage(e.target.value)}
@@ -446,7 +598,6 @@ export default function CallHistoryPage() {
                                 ) : (
                                   /* Original transcription */
                                   <div>
-                                    {/* If it's an object with structured data */}
                                     {typeof transcriptionData === 'object' && transcriptionData?.diarized_transcription ? (
                                       <div className="space-y-4">
                                         {/* Language info */}
@@ -457,28 +608,74 @@ export default function CallHistoryPage() {
                                             </span>
                                           </div>
                                         )}
+
+                                        {/* Speaker sentiment and tone */}
+                                        {(sentimentAnalysis.length > 0 || toneAnalysis.length > 0) && (
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                            {speakers.map((speaker: string) => {
+                                                const speakerName = speakerMapping[speaker] || speaker;
+                                                const sentiment = sentimentAnalysis.find((s: SpeakerSentiment) => s.speaker === speaker);
+                                                const tone = toneAnalysis.find((t: SpeakerTone) => t.speaker === speaker);
+                                                return (
+                                                    <div key={speaker} className="p-3 bg-gray-100 rounded-lg border">
+                                                        <h4 className="font-semibold text-gray-800">{speakerName}</h4>
+                                                        {sentiment && <p className="text-sm text-gray-600">Sentiment: <span className="font-medium">{sentiment.sentiment}</span></p>}
+                                                        {tone && <p className="text-sm text-gray-600">Tone: <span className="font-medium">{tone.tone}</span></p>}
+                                                    </div>
+                                                )
+                                            })}
+                                          </div>
+                                        )}
                                         
                                         {/* Diarized conversation */}
                                         <div className="space-y-3">
-                                          {transcriptionData.diarized_transcription.map((segment: any, index: number) => (
-                                            <div key={index} className="flex gap-3 p-3 bg-gray-50 rounded-md">
-                                              <div className="flex-shrink-0">
-                                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                                                  {segment.speaker}
-                                                </span>
+                                          {(transcriptionData as DiarizedTranscription).diarized_transcription.map((segment: TranscriptionSegment, index: number) => {
+                                            const speakerName = speakerMapping[segment.speaker] || segment.speaker;
+                                            const isSpeaker1 = isChatView && segment.speaker === speakers[0];
+
+                                            return (
+                                              <div key={index} className={`flex flex-col ${isChatView ? (isSpeaker1 ? 'items-start' : 'items-end') : 'items-start'}`}>
+                                                  <div className={`flex items-center gap-2 ${isChatView && !isSpeaker1 ? 'flex-row-reverse' : ''}`}>
+                                                      <span className="font-bold text-sm text-gray-600">{speakerName}</span>
+                                                      {showDetailedAnalysis && (segment as any).sentiment && (
+                                                        <span className={`text-xs px-2 py-1 rounded-full ${
+                                                          (segment as any).sentiment === 'positive' ? 'bg-green-100 text-green-800' :
+                                                          (segment as any).sentiment === 'negative' ? 'bg-red-100 text-red-800' :
+                                                          'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                          {(segment as any).sentiment}
+                                                        </span>
+                                                      )}
+                                                      {showDetailedAnalysis && (segment as any).tone && (
+                                                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                                                          {(segment as any).tone}
+                                                        </span>
+                                                      )}
+                                                  </div>
+                                                  <div className={`mt-1 p-3 rounded-lg max-w-xl ${isChatView ? (isSpeaker1 ? 'bg-indigo-50' : 'bg-green-50') : 'bg-gray-100'}`}>
+                                                      <p className="text-gray-800 leading-relaxed">
+                                                          {segment.text}
+                                                      </p>
+                                                      <div className="flex items-center justify-between mt-2">
+                                                        {segment.timestamp && (
+                                                            <p className={`text-xs text-gray-400 ${isChatView ? (isSpeaker1 ? 'text-left' : 'text-right') : 'text-left'}`}>
+                                                                {segment.timestamp}
+                                                            </p>
+                                                        )}
+                                                        {showDetailedAnalysis && (segment as any).confidence_level && (
+                                                          <span className={`text-xs px-2 py-1 rounded ${
+                                                            (segment as any).confidence_level === 'high' ? 'bg-green-50 text-green-700' :
+                                                            (segment as any).confidence_level === 'medium' ? 'bg-yellow-50 text-yellow-700' :
+                                                            'bg-gray-50 text-gray-700'
+                                                          }`}>
+                                                            {(segment as any).confidence_level} confidence
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                  </div>
                                               </div>
-                                              <div className="flex-1">
-                                                <p className="text-gray-700 leading-relaxed">
-                                                  {segment.text}
-                                                </p>
-                                                {segment.timestamp && (
-                                                  <p className="text-xs text-gray-500 mt-1">
-                                                    {segment.timestamp}
-                                                  </p>
-                                                )}
-                                              </div>
-                                            </div>
-                                          ))}
+                                            )
+                                          })}
                                         </div>
                                       </div>
                                     ) : (
