@@ -3,6 +3,35 @@ import { DatabaseStorage } from '@/lib/db';
 import { Logger } from '@/lib/utils';
 import { getAuthenticatedUser } from '@/lib/auth';
 
+/**
+ * @swagger
+ * /api/analytics:
+ *   get:
+ *     tags: [Analytics]
+ *     summary: Get analytics data
+ *     description: Retrieve comprehensive analytics and insights data for the authenticated user
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Analytics data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AnalyticsResponse'
+ *       401:
+ *         description: Authentication required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Server error while fetching analytics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 export async function GET(request: NextRequest) {
   try {
     // Check authentication

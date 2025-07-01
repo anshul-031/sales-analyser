@@ -5,6 +5,60 @@ import { FILE_UPLOAD_CONFIG } from '@/lib/constants';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getAuthenticatedUser } from '@/lib/auth';
 
+/**
+ * @swagger
+ * /api/upload:
+ *   post:
+ *     tags: [File Management]
+ *     summary: Upload audio files
+ *     description: Upload one or more audio files for analysis (MP3, WAV, M4A)
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [files]
+ *             properties:
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Audio files to upload
+ *               customParameters:
+ *                 type: string
+ *                 description: JSON string of custom analysis parameters
+ *                 example: '["sentiment", "key_points", "action_items"]'
+ *     responses:
+ *       200:
+ *         description: Files uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UploadResponse'
+ *       400:
+ *         description: Invalid file format or size
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Authentication required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       413:
+ *         description: File too large
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+
 const r2 = new S3Client({
   region: 'auto',
   endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,

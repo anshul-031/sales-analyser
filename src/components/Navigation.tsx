@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Upload, FileAudio, User, LogOut, Menu, X } from 'lucide-react';
+import { BarChart3, Upload, FileAudio, User, LogOut, Menu, X, Code } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
 const navigationItems = [
@@ -26,6 +26,11 @@ const navigationItems = [
     name: 'Analytics',
     href: '/analytics',
     icon: BarChart3
+  },
+  {
+    name: 'Integrations',
+    href: '/integrations',
+    icon: Code
   }
 ];
 
@@ -66,7 +71,7 @@ export default function Navigation() {
                   
                   return (
                     <Link
-                      key={item.name}
+                      key={`${item.name}-${item.href}`}
                       href={item.href}
                       className={`${
                         isActive
@@ -184,7 +189,7 @@ export default function Navigation() {
                 
                 return (
                   <Link
-                    key={item.name}
+                    key={`mobile-${item.name}-${item.href}`}
                     href={item.href}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`${

@@ -4,6 +4,54 @@ import { DatabaseStorage } from '@/lib/db';
 import { Logger } from '@/lib/utils';
 import { getAuthenticatedUser } from '@/lib/auth';
 
+/**
+ * @swagger
+ * /api/chatbot:
+ *   post:
+ *     tags: [AI Chat]
+ *     summary: Query analysis with AI chatbot
+ *     description: Ask questions about your analysis results using natural language and get AI-powered insights
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ChatRequest'
+ *     responses:
+ *       200:
+ *         description: AI response generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ChatResponse'
+ *       400:
+ *         description: Missing required parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Authentication required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Analysis or upload not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: AI processing error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+
 export async function POST(request: NextRequest) {
   try {
     Logger.info('[ChatbotAPI] Processing chatbot query');
