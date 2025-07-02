@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
 import { DatabaseStorage } from '@/lib/db';
 import { FILE_UPLOAD_CONFIG } from '@/lib/constants';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getAuthenticatedUser } from '@/lib/auth';
 
 /**
@@ -334,6 +334,137 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: false,
       error: 'Failed to fetch uploads',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
+}
+
+/**
+ * @swagger
+ * /api/upload:
+ *   delete:
+ *     tags: [File Management]
+ *     summary: Delete an uploaded file
+ *     description: Delete an uploaded file and its associated analyses
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the upload to delete
+ *     responses:
+ *       200:
+ *         description: File deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Upload deleted successfully"
+ *       400:
+ *         description: Missing upload ID
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Authentication required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Upload not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: Not authorized to delete this upload
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    // Check authentication
+    const user = await getAuthenticatedUser(request);
+    if (!user) {
+      return NextResponse.json({
+        success: false,
+        error: 'Authentication required'
+      }, { status: 401 });
+    }
+
+    // Get upload ID from query parameters
+    const { searchParams } = new URL(request.url);
+    const uploadId = searchParams.get('id');
+
+    if (!uploadId) {
+      return NextResponse.json({
+        success: false,
+        error: 'Upload ID is required'
+      }, { status: 400 });
+    }
+
+    Logger.info('[Upload API] Deleting upload:', uploadId, 'for user:', user.id);
+
+    // First, get the upload to verify ownership and get file details
+    const upload = await DatabaseStorage.getUploadById(uploadId);
+    
+    if (!upload) {
+      return NextResponse.json({
+        success: false,
+        error: 'Upload not found'
+      }, { status: 404 });
+    }
+
+    // Verify that the user owns this upload
+    if (upload.userId !== user.id) {
+      return NextResponse.json({
+        success: false,
+        error: 'Not authorized to delete this upload'
+      }, { status: 403 });
+    }
+
+    // Delete the file from R2 storage
+    try {
+      if (upload.fileUrl) {
+        await r2.send(new DeleteObjectCommand({
+          Bucket: process.env.R2_BUCKET_NAME!,
+          Key: upload.fileUrl,
+        }));
+        Logger.info('[Upload API] Deleted file from R2:', upload.fileUrl);
+      }
+    } catch (error) {
+      Logger.warn('[Upload API] Failed to delete file from R2 (file may not exist):', error);
+      // Continue with database deletion even if R2 deletion fails
+    }
+
+    // Delete the upload record from database (cascade delete will handle related analyses)
+    await DatabaseStorage.deleteUpload(uploadId);
+
+    Logger.info('[Upload API] Successfully deleted upload:', uploadId);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Upload deleted successfully'
+    });
+
+  } catch (error) {
+    Logger.error('[Upload API] DELETE request failed:', error);
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to delete upload',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
