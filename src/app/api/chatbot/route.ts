@@ -169,7 +169,7 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
     }
 
     // Create enhanced prompt for the chatbot
-    const chatbotPrompt = `You are a helpful AI assistant specializing in sales call analysis. You have access to call recording transcriptions and detailed analysis results. Your role is to help users understand their sales performance by answering questions about their call recordings and analysis results.
+    const chatbotPrompt = `You are a helpful AI assistant specializing in call analysis. You have access to call recording transcriptions and detailed analysis results. Your role is to help users understand their call performance by answering questions about their call recordings and analysis results.
 
 **Available Context:**
 ${contextData}

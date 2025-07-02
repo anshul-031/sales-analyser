@@ -65,7 +65,7 @@ export default function Navigation() {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <BarChart3 className="h-8 w-8 text-indigo-600" />
-              <span className="ml-2 text-xl font-bold text-gray-900">Sales Analyser</span>
+              <span className="ml-2 text-xl font-bold text-gray-900">AI Call Analyser</span>
             </div>
             {user && (
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">

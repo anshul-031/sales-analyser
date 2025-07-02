@@ -7,7 +7,7 @@ import { regenerateSwaggerSpec } from '@/lib/swagger';
  *   get:
  *     tags: [Documentation]
  *     summary: Get OpenAPI specification
- *     description: Returns the complete OpenAPI 3.0 specification for the Sales Analyser API, dynamically generated from current code
+ *     description: Returns the complete OpenAPI 3.0 specification for the AI Call Analyser API, dynamically generated from current code
  *     parameters:
  *       - in: query
  *         name: refresh

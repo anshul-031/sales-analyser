@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sales Performance Analyzer - AI-Powered Sales Call Analysis",
-  description: "Transform your sales calls into winning insights with AI-powered analysis. Get detailed performance scores, actionable recommendations, and conversation insights.",
+  title: "AI Call Performance Analyzer - AI-Powered Call Analysis",
+  description: "Transform your call recordings into winning insights with AI-powered analysis. Get detailed performance scores, actionable recommendations, and conversation insights.",
 };
 
 export default function RootLayout({

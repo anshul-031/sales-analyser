@@ -80,7 +80,7 @@ class GeminiAPIKeyManager {
 // Initialize the API key manager
 const apiKeyManager = new GeminiAPIKeyManager();
 
-// Default sales analysis parameters
+// Default call analysis parameters
 export const DEFAULT_ANALYSIS_PARAMETERS = {
   'communication_skills': {
     name: 'Communication Skills',
@@ -494,7 +494,7 @@ Please provide your analysis in the following JSON format:
       };
     } catch (error) {
       console.error('[GeminiService] Default analysis error:', error);
-      throw new Error(`Sales analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Call analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

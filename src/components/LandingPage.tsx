@@ -36,7 +36,7 @@ export default function LandingPage() {
               </span>
             </h1>
             <p className="text-xl md:text-2xl text-blue-100 mb-8 max-w-3xl mx-auto">
-              Upload your sales recordings and get AI-powered analysis with detailed performance scores, 
+              Upload your call recordings and get AI-powered analysis with detailed performance scores, 
               actionable recommendations, and conversation insights.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -67,7 +67,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              Powerful AI-Driven Sales Analysis
+              Powerful AI-Driven Call Analysis
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               Our advanced AI technology provides comprehensive insights into your sales conversations, 
@@ -394,7 +394,7 @@ export default function LandingPage() {
                 <span className="ml-2 text-xl font-bold">Sales Performance Analyzer</span>
               </div>
               <p className="text-gray-400 mb-6 max-w-md">
-                AI-powered sales call analysis that helps teams improve performance, close more deals, 
+                AI-powered call analysis that helps teams improve performance, close more deals, 
                 and provide better customer experiences.
               </p>
               <div className="flex space-x-4">

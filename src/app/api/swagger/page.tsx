@@ -393,7 +393,7 @@ export default function SwaggerPage() {
               <Code className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Sales Analyser API</h1>
+              <h1 className="text-3xl font-bold">AI Call Analyser API</h1>
               <p className="text-blue-100">Version 1.0.0</p>
             </div>
           </div>

@@ -809,7 +809,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
       <div className="flex justify-between items-center mb-8">
         <div>
           <h2 className="text-3xl font-bold text-gray-800">Analysis Results</h2>
-          <p className="text-gray-600 mt-1">Detailed AI-powered sales call performance analysis</p>
+          <p className="text-gray-600 mt-1">Detailed AI-powered call performance analysis</p>
         </div>
         <button
           onClick={fetchAnalyses}

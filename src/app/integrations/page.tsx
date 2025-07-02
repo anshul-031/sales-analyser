@@ -455,7 +455,7 @@ curl -X GET "${baseUrl}/api/analytics" \\
             API Integration Hub
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Integrate Sales Analyzer's powerful AI-driven call analysis capabilities into your applications.
+            Integrate AI Call Analyzer's powerful AI-driven call analysis capabilities into your applications.
             Our REST API provides comprehensive access to upload, analyze, and query sales call data.
           </p>
         </div>

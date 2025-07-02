@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Sales Analyzer API provides comprehensive AI-powered call analysis capabilities that can be seamlessly integrated into your existing systems. Our REST API enables you to upload audio files, perform advanced analysis, and query results using natural language.
+The AI Call Analyzer API provides comprehensive AI-powered call analysis capabilities that can be seamlessly integrated into your existing systems. Our REST API enables you to upload audio files, perform advanced analysis, and query results using natural language.
 
 ## Base URL
 
@@ -197,7 +197,7 @@ class AnalyticsIntegration {
     // Enhance with detailed insights
     const detailedInsights = await Promise.all(
       analytics.data.trends.map(async (trend) => {
-        const insights = await this.salesAnalyzer.chatAboutAnalysis(
+        const insights = await this.aiCallAnalyzer.chatAboutAnalysis(
           `Analyze the trends for ${trend.date}. What factors contributed to the sentiment score of ${trend.sentiment}?`,
           null // Query across all data
         );

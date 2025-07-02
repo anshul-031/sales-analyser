@@ -221,7 +221,7 @@ export default function UploadPage() {
           <div className="flex justify-between items-center py-4">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Upload & Analyze</h1>
-              <p className="text-gray-600">Upload your sales call recordings and get AI-powered analysis</p>
+              <p className="text-gray-600">Upload your call recordings and get AI-powered analysis</p>
             </div>
             <div className="hidden md:flex md:space-x-4">
               <button
@@ -332,7 +332,7 @@ export default function UploadPage() {
           <div className="mt-12">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                Powerful Sales Call Analysis Features
+                Powerful Call Analysis Features
               </h2>
               <p className="text-gray-600 max-w-2xl mx-auto">
                 Upload your sales call recordings and get detailed AI-powered insights to improve your team&apos;s performance

@@ -4,13 +4,13 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Sales Analyser API',
+      title: 'AI Call Analyser API',
       version: '1.0.0',
-      description: 'AI-powered sales call analysis API for transcription, sentiment analysis, and insights generation',
+      description: 'AI-powered call analysis API for transcription, sentiment analysis, and insights generation',
       contact: {
-        name: 'Sales Analyser Support',
-        email: 'support@salesanalyser.com',
-        url: 'https://salesanalyser.com/support'
+        name: 'AI Call Analyser Support',
+        email: 'support@aicallanalyser.com',
+        url: 'https://aicallanalyser.com/support'
       },
       license: {
         name: 'MIT',

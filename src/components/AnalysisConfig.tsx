@@ -194,7 +194,7 @@ export default function AnalysisConfig({ uploadedFiles, userId, onAnalysisStart 
             <div className="ml-3 flex-1">
               <div className="flex items-center">
                 <Sparkles className="w-5 h-5 text-blue-500 mr-2" />
-                <span className="font-medium text-gray-700">Comprehensive Sales Analysis</span>
+                <span className="font-medium text-gray-700">Comprehensive Call Analysis</span>
               </div>
               <p className="text-sm text-gray-600 mt-1">
                 Analyze using our proven sales performance framework covering all key areas

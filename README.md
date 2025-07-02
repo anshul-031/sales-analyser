@@ -1,11 +1,11 @@
-# Sales Performance Analyzer
+# AI Call Performance Analyzer
 
-A modern AI-powered sales call analysis application built with Next.js and Google Gemini AI. Analyze sales calls to improve performance with detailed insights and actionable recommendations.
+A modern AI-powered call analysis application built with Next.js and Google Gemini AI. Analyze call recordings to improve performance with detailed insights and actionable recommendations.
 
 ## ✨ Features
 
 - **🎯 AI-Powered Analysis**: Google Gemini integration for transcription and intelligent analysis
-- **📊 Comprehensive Framework**: 5-area sales performance evaluation
+- **📊 Comprehensive Framework**: 5-area call performance evaluation
 - **🎨 Custom Analysis**: User-defined analysis criteria and prompts
 - **🤖 AI Chat Assistant**: Interactive chatbot to ask questions about your call recordings
 - **💾 File-Based Storage**: No database required - works out of the box
@@ -26,7 +26,7 @@ A modern AI-powered sales call analysis application built with Next.js and Googl
 1. **Clone and Install**
    ```bash
    git clone <repository-url>
-   cd sales-analyser
+   cd ai-call-analyser
    npm install
    ```
 

@@ -55,7 +55,7 @@ export default function Chatbot({ userId, analysisId, uploadId, onClose }: Chatb
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
       type: 'bot',
-      content: `Hello! I'm your sales analysis assistant. I can help you understand your call recordings and performance analysis. Ask me anything about your sales calls, performance metrics, or get specific recommendations for improvement.`,
+      content: `Hello! I'm your call analysis assistant. I can help you understand your call recordings and performance analysis. Ask me anything about your calls, performance metrics, or get specific recommendations for improvement.`,
       timestamp: new Date()
     };
     setMessages([welcomeMessage]);
@@ -200,7 +200,7 @@ export default function Chatbot({ userId, analysisId, uploadId, onClose }: Chatb
         <div className="flex items-center space-x-2">
           <Bot className="w-5 h-5" />
           <div>
-            <h3 className="font-semibold">Sales Analysis Assistant</h3>
+            <h3 className="font-semibold">Call Analysis Assistant</h3>
             <p className="text-xs text-blue-100">Ask me about your call recordings</p>
           </div>
         </div>
