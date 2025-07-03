@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileAudio,
   Trash2,
@@ -38,6 +38,9 @@ export default function CallHistoryPage() {
   const [callRecordings, setCallRecordings] = useState<CallRecording[]>([]);
   const [selectedRecording, setSelectedRecording] = useState<CallRecording | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Use a ref to store the current selected recording ID to prevent race conditions
+  const selectedRecordingIdRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState('analysis');
   const [translatedText, setTranslatedText] = useState<string>('');
   const [translating, setTranslating] = useState(false);
@@ -45,6 +48,10 @@ export default function CallHistoryPage() {
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(['speaker-analysis', 'transcription-segments']));
+  const [loadingAnalysisData, setLoadingAnalysisData] = useState(false);
+  const [loadedAnalysisIds, setLoadedAnalysisIds] = useState<Set<string>>(new Set());
+  const [retryAttempts, setRetryAttempts] = useState<Map<string, number>>(new Map());
+  const [failedAnalysisIds, setFailedAnalysisIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -58,13 +65,35 @@ export default function CallHistoryPage() {
     }
   }, [user, authLoading]);
 
+  // Track selectedRecording changes
+  useEffect(() => {
+    const trackingId = Math.random().toString(36).substr(2, 9);
+    console.log(`[CallHistory-STATE-${trackingId}] selectedRecording changed:`, selectedRecording ? {
+      id: selectedRecording.id,
+      filename: selectedRecording.filename,
+      analyses: selectedRecording.analyses?.map(a => ({
+        id: a.id,
+        status: a.status,
+        hasAnalysisResult: !!a.analysisResult,
+        hasTranscription: !!a.transcription
+      }))
+    } : null);
+    console.log(`[CallHistory-STATE-${trackingId}] selectedRecordingIdRef.current:`, selectedRecordingIdRef.current);
+  }, [selectedRecording]);
+
+  // Track activeTab changes  
+  useEffect(() => {
+    const trackingId = Math.random().toString(36).substr(2, 9);
+    console.log(`[CallHistory-TAB-${trackingId}] activeTab changed to:`, activeTab);
+  }, [activeTab]);
+
   const loadCallRecordings = async () => {
     if (!user) return;
     
     try {
       console.log('[CallHistory] Starting to load call recordings...');
       setLoading(true);
-      const response = await fetch('/api/upload');
+      const response = await fetch('/api/upload?optimized=true');
       console.log('[CallHistory] Upload API response status:', response.status);
       
       const result = await response.json();
@@ -83,9 +112,42 @@ export default function CallHistoryPage() {
         console.log('[CallHistory] Audio files data:', audioFiles);
         
         setCallRecordings(audioFiles);
+        
+        // Initialize loaded analysis cache for recordings that already have data
+        const alreadyLoadedIds = new Set<string>();
+        audioFiles.forEach((recording: CallRecording) => {
+          if (recording.analyses && recording.analyses.length > 0) {
+            recording.analyses.forEach((analysis: any) => {
+              if (analysis.analysisResult || analysis.transcription) {
+                alreadyLoadedIds.add(analysis.id);
+                console.log('[CallHistory] Marking analysis as already loaded:', analysis.id);
+              }
+            });
+          }
+        });
+        setLoadedAnalysisIds(alreadyLoadedIds);
+        
         if (audioFiles.length > 0) {
-          console.log('[CallHistory] Setting first recording as selected:', audioFiles[0]);
-          setSelectedRecording(audioFiles[0]);
+          const firstRecording = audioFiles[0];
+          console.log('[CallHistory] Setting first recording as selected:', firstRecording);
+          setSelectedRecording(firstRecording);
+          selectedRecordingIdRef.current = firstRecording.id;
+          
+          // Auto-load data for the first recording if needed
+          if (firstRecording.analyses?.length) {
+            const analysis = firstRecording.analyses[0];
+            const isCompleted = analysis.status === 'completed' || analysis.status === 'COMPLETED';
+            
+            if (isCompleted && !analysis.analysisResult && !alreadyLoadedIds.has(analysis.id)) {
+              console.log('[CallHistory] Auto-loading data for initially selected recording');
+              // Use a small delay to ensure state has settled
+              setTimeout(() => {
+                if (selectedRecordingIdRef.current === firstRecording.id) {
+                  loadAnalysisData(analysis.id, firstRecording.id);
+                }
+              }, 200);
+            }
+          }
         }
       } else {
         console.error('[CallHistory] Failed to load recordings:', result.error);
@@ -99,16 +161,205 @@ export default function CallHistoryPage() {
   };
 
   const handleRecordingSelect = (recording: CallRecording) => {
-    console.log('[CallHistory] Selecting recording:', recording);
-    console.log('[CallHistory] Recording analyses:', recording.analyses);
-    console.log('[CallHistory] Current activeTab before selection:', activeTab);
-    setSelectedRecording(recording);
-    console.log('[CallHistory] Current activeTab after selection:', activeTab);
+    const selectionId = Math.random().toString(36).substr(2, 9);
+    console.log(`[CallHistory-${selectionId}] === RECORDING SELECTION START ===`);
+    console.log(`[CallHistory-${selectionId}] Selecting recording ID:`, recording.id);
+    console.log(`[CallHistory-${selectionId}] Previous selectedRecording ID:`, selectedRecording?.id);
+    console.log(`[CallHistory-${selectionId}] Recording title:`, recording.filename);
+    console.log(`[CallHistory-${selectionId}] Recording analyses:`, recording.analyses?.map(a => ({
+      id: a.id,
+      status: a.status,
+      hasAnalysisResult: !!a.analysisResult,
+      hasTranscription: !!a.transcription
+    })));
+    console.log(`[CallHistory-${selectionId}] Current activeTab before selection:`, activeTab);
     
-    // Reset to analysis tab when selecting a new recording
+    // Immediately set the selected recording and update the ref to prevent race conditions
+    console.log(`[CallHistory-${selectionId}] About to setSelectedRecording...`);
+    setSelectedRecording(recording);
+    selectedRecordingIdRef.current = recording.id;
+    console.log(`[CallHistory-${selectionId}] Set selectedRecordingIdRef to:`, recording.id);
+    console.log(`[CallHistory-${selectionId}] Current activeTab after selection:`, activeTab);
+    
+    // Reset to analysis tab when selecting a new recording - do this before data loading
     if (activeTab !== 'analysis') {
-      console.log('[CallHistory] Resetting activeTab to analysis for new recording');
+      console.log(`[CallHistory-${selectionId}] Resetting activeTab from '${activeTab}' to 'analysis' for new recording`);
       setActiveTab('analysis');
+    }
+    
+    // Auto-load data if needed for the current tab (with a stable reference)
+    if (recording.analyses?.length) {
+      const analysis = recording.analyses[0];
+      const isCompleted = analysis.status === 'completed' || analysis.status === 'COMPLETED';
+      
+      console.log(`[CallHistory-${selectionId}] Analysis info - ID: ${analysis.id}, Status: ${analysis.status}, isCompleted: ${isCompleted}`);
+      console.log(`[CallHistory-${selectionId}] Has analysis result: ${!!analysis.analysisResult}, Has transcription: ${!!analysis.transcription}`);
+      console.log(`[CallHistory-${selectionId}] Already loaded? ${loadedAnalysisIds.has(analysis.id)}`);
+      
+      if (isCompleted && !loadedAnalysisIds.has(analysis.id)) {
+        // Since we reset to analysis tab above, we should load analysis data
+        if (!analysis.analysisResult) {
+          console.log(`[CallHistory-${selectionId}] Auto-loading analysis data for selected recording`);
+          // Load immediately with the correct recording ID to prevent race conditions
+          loadAnalysisData(analysis.id, recording.id);
+        } else {
+          console.log(`[CallHistory-${selectionId}] Analysis data already present, no need to load`);
+        }
+      } else if (loadedAnalysisIds.has(analysis.id)) {
+        console.log(`[CallHistory-${selectionId}] Skipping API call - data already loaded for analysis:`, analysis.id);
+      } else {
+        console.log(`[CallHistory-${selectionId}] Not loading data - isCompleted: ${isCompleted}, status: ${analysis.status}`);
+      }
+    } else {
+      console.log(`[CallHistory-${selectionId}] No analyses found for recording`);
+    }
+    
+    console.log(`[CallHistory-${selectionId}] === RECORDING SELECTION END ===`);
+  };
+
+  // Function to load analysis data on-demand
+  const loadAnalysisData = async (analysisId: string, expectedRecordingId?: string) => {
+    if (!user || loadingAnalysisData) return;
+    
+    // If a specific recording ID is expected, check if selection has changed
+    if (expectedRecordingId && selectedRecordingIdRef.current !== expectedRecordingId) {
+      console.log('[CallHistory] Selection changed, aborting load for:', analysisId);
+      return;
+    }
+    
+    // Check if this analysis has failed too many times
+    if (failedAnalysisIds.has(analysisId)) {
+      console.log('[CallHistory] Analysis marked as permanently failed:', analysisId);
+      return;
+    }
+    
+    // Check retry count
+    const currentRetries = retryAttempts.get(analysisId) || 0;
+    const MAX_RETRIES = 3;
+    
+    if (currentRetries >= MAX_RETRIES) {
+      console.warn('[CallHistory] Max retries reached for analysis:', analysisId);
+      setFailedAnalysisIds(prev => new Set([...prev, analysisId]));
+      return;
+    }
+    
+    // Check if already loaded AND data is actually present
+    const hasInCache = loadedAnalysisIds.has(analysisId);
+    const hasActualData = selectedRecording?.analyses?.some(analysis => 
+      analysis.id === analysisId && 
+      (analysis.analysisResult || analysis.transcription)
+    );
+    
+    if (hasInCache && hasActualData) {
+      console.log('[CallHistory] Analysis data already loaded for:', analysisId);
+      return;
+    }
+    
+    if (hasInCache && !hasActualData) {
+      console.log('[CallHistory] Cache indicates loaded but data missing, removing from cache and reloading:', analysisId);
+      setLoadedAnalysisIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(analysisId);
+        return newSet;
+      });
+    }
+    
+    // Increment retry count
+    setRetryAttempts(prev => new Map(prev.set(analysisId, currentRetries + 1)));
+    
+    try {
+      setLoadingAnalysisData(true);
+      console.log('[CallHistory] Loading analysis data on-demand for:', analysisId);
+      
+      const response = await fetch(`/api/analysis-optimized/${analysisId}?include=all`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch analysis data: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log('[CallHistory] On-demand API response:', result);
+      
+      if (result.success && result.analysis) {
+        console.log('[CallHistory] Successfully loaded analysis data on-demand');
+        console.log('[CallHistory] Loaded analysis result:', result.analysis.analysisResult);
+        console.log('[CallHistory] Loaded transcription:', result.analysis.transcription);
+        
+        // Validate that we actually have some data before marking as loaded
+        const hasAnalysisResult = result.analysis.analysisResult && Object.keys(result.analysis.analysisResult).length > 0;
+        const hasTranscription = result.analysis.transcription && result.analysis.transcription.length > 0;
+        
+        if (hasAnalysisResult || hasTranscription) {
+          // Mark as loaded only if we have actual data
+          setLoadedAnalysisIds(prev => new Set([...prev, analysisId]));
+          // Clear retry count on successful load
+          setRetryAttempts(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(analysisId);
+            return newMap;
+          });
+          console.log('[CallHistory] Marking analysis as loaded (has data):', analysisId);
+        } else {
+          console.warn('[CallHistory] Analysis response successful but no actual data found for:', analysisId);
+        }
+        
+        // Update the recording with the loaded data
+        // We need to find the correct recording to update, whether it's the currently selected one or not
+        const targetRecordingId = expectedRecordingId || selectedRecording?.id;
+        
+        if (targetRecordingId) {
+          console.log(`[CallHistory] Before update - selectedRecording.id:`, selectedRecording?.id);
+          console.log(`[CallHistory] Before update - expectedRecordingId:`, expectedRecordingId);
+          console.log(`[CallHistory] Before update - selectedRecordingIdRef.current:`, selectedRecordingIdRef.current);
+          console.log(`[CallHistory] Before update - analysisId:`, analysisId);
+          console.log(`[CallHistory] Before update - targetRecordingId:`, targetRecordingId);
+          
+          // First, update the main recordings list
+          setCallRecordings(prev => prev.map(recording => {
+            if (recording.id === targetRecordingId) {
+              const updatedAnalyses = recording.analyses?.map(analysis => 
+                analysis.id === analysisId 
+                  ? { 
+                      ...analysis, 
+                      analysisResult: result.analysis.analysisResult, 
+                      transcription: result.analysis.transcription 
+                    }
+                  : analysis
+              ) || [];
+              
+              const updatedRecording = { ...recording, analyses: updatedAnalyses };
+              console.log(`[CallHistory] Updated recording in main list:`, {
+                id: updatedRecording.id,
+                filename: updatedRecording.filename,
+                analyses: updatedRecording.analyses?.map(a => ({
+                  id: a.id,
+                  hasAnalysisResult: !!a.analysisResult,
+                  hasTranscription: !!a.transcription
+                }))
+              });
+              
+              // If this is the currently selected recording, also update the selected recording state
+              if (selectedRecordingIdRef.current === targetRecordingId) {
+                console.log(`[CallHistory] Target recording is currently selected, updating selectedRecording state`);
+                setSelectedRecording(updatedRecording);
+              }
+              
+              return updatedRecording;
+            }
+            return recording;
+          }));
+          
+          console.log(`[CallHistory] Successfully updated recordings list for target recording:`, targetRecordingId);
+        } else {
+          console.log(`[CallHistory] Skipping state update - no target recording ID available`);
+        }
+      } else {
+        console.error('[CallHistory] Failed to load analysis data:', result.error || 'Unknown error');
+        // Don't mark as loaded if the request failed
+      }
+    } catch (error) {
+      console.error('[CallHistory] Error loading analysis data:', error);
+    } finally {
+      setLoadingAnalysisData(false);
     }
   };
 
@@ -173,6 +424,25 @@ export default function CallHistoryPage() {
       console.log('[CallHistory] Analysis status:', selectedRecording.analyses[0].status);
     }
     setActiveTab(tab);
+    
+    // Auto-load data when switching to tabs that need it
+    if (selectedRecording?.analyses?.length) {
+      const analysis = selectedRecording.analyses[0];
+      const isCompleted = analysis.status === 'completed' || analysis.status === 'COMPLETED';
+      
+      if (isCompleted && !loadedAnalysisIds.has(analysis.id)) {
+        if (tab === 'analysis' && !analysis.analysisResult) {
+          console.log('[CallHistory] Auto-loading analysis data for analysis tab');
+          loadAnalysisData(analysis.id, selectedRecording.id);
+        } else if (tab === 'transcription' && !analysis.transcription) {
+          console.log('[CallHistory] Auto-loading analysis data for transcription tab');
+          loadAnalysisData(analysis.id, selectedRecording.id);
+        }
+      } else if (loadedAnalysisIds.has(analysis.id)) {
+        console.log('[CallHistory] Skipping API call - data already loaded for:', analysis.id);
+      }
+    }
+    
     // Clear translation when switching tabs
     if (tab !== 'transcription') {
       setTranslatedText('');
@@ -380,14 +650,25 @@ export default function CallHistoryPage() {
               {selectedRecording.analyses && selectedRecording.analyses.length > 0 ? (
                 (() => {
                   const analysis = selectedRecording.analyses[0];
-                  console.log('[CallHistory] Selected recording analysis:', analysis);
-                  console.log('[CallHistory] Analysis status:', analysis.status);
-                  console.log('[CallHistory] Analysis status type:', typeof analysis.status);
-                  console.log('[CallHistory] Active tab:', activeTab);
-                  console.log('[CallHistory] Analysis result exists:', !!analysis.analysisResult);
-                  console.log('[CallHistory] Transcription exists:', !!analysis.transcription);
-                  console.log('[CallHistory] Analysis result type:', typeof analysis.analysisResult);
-                  console.log('[CallHistory] Analysis result content:', analysis.analysisResult);
+                  const renderId = Math.random().toString(36).substr(2, 9);
+                  
+                  console.log(`[CallHistory-RENDER-${renderId}] === RENDER START ===`);
+                  console.log(`[CallHistory-RENDER-${renderId}] Selected recording ID:`, selectedRecording.id);
+                  console.log(`[CallHistory-RENDER-${renderId}] Selected recording filename:`, selectedRecording.filename);
+                  console.log(`[CallHistory-RENDER-${renderId}] Analysis ID:`, analysis.id);
+                  console.log(`[CallHistory-RENDER-${renderId}] Analysis status:`, analysis.status);
+                  console.log(`[CallHistory-RENDER-${renderId}] Analysis status type:`, typeof analysis.status);
+                  console.log(`[CallHistory-RENDER-${renderId}] Active tab:`, activeTab);
+                  console.log(`[CallHistory-RENDER-${renderId}] Analysis result exists:`, !!analysis.analysisResult);
+                  console.log(`[CallHistory-RENDER-${renderId}] Transcription exists:`, !!analysis.transcription);
+                  console.log(`[CallHistory-RENDER-${renderId}] Analysis result type:`, typeof analysis.analysisResult);
+                  
+                  // Log a summary of analysis result content if it exists
+                  if (analysis.analysisResult && typeof analysis.analysisResult === 'object') {
+                    console.log(`[CallHistory-RENDER-${renderId}] Analysis result keys:`, Object.keys(analysis.analysisResult));
+                  } else {
+                    console.log(`[CallHistory-RENDER-${renderId}] Analysis result content:`, analysis.analysisResult);
+                  }
                   
                   // Handle both uppercase and lowercase status values for compatibility
                   const isCompleted = analysis.status === 'completed' || analysis.status === 'COMPLETED';
@@ -395,25 +676,48 @@ export default function CallHistoryPage() {
                   const isPending = analysis.status === 'pending' || analysis.status === 'PENDING';
                   const isProcessing = analysis.status === 'processing' || analysis.status === 'PROCESSING';
                   
-                  console.log('[CallHistory] Status checks - isCompleted:', isCompleted, 'isFailed:', isFailed, 'isPending:', isPending, 'isProcessing:', isProcessing);
+                  console.log(`[CallHistory-RENDER-${renderId}] Status checks - isCompleted:`, isCompleted, 'isFailed:', isFailed, 'isPending:', isPending, 'isProcessing:', isProcessing);
                   
                   if (isCompleted) {
-                    console.log('[CallHistory] Analysis is completed, checking active tab...');
+                    console.log(`[CallHistory-RENDER-${renderId}] Analysis is completed, checking active tab...`);
                     if (activeTab === 'analysis') {
-                      console.log('[CallHistory] Rendering analysis tab with data:', analysis.analysisResult);
+                      console.log(`[CallHistory-RENDER-${renderId}] Rendering analysis tab with data available:`, !!analysis.analysisResult);
                       if (!analysis.analysisResult) {
-                        console.warn('[CallHistory] No analysis result available for completed analysis');
+                        console.warn(`[CallHistory-RENDER-${renderId}] No analysis result available for completed analysis, forcing reload...`);
+                        // Check if this analysis has failed permanently
+                        if (failedAnalysisIds.has(analysis.id)) {
+                          console.log(`[CallHistory-RENDER-${renderId}] Analysis marked as permanently failed, showing error`);
+                          return (
+                            <div className="text-center py-8">
+                              <div className="text-red-600 mb-4">
+                                <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
+                                <p className="font-medium">Unable to load analysis data</p>
+                              </div>
+                              <p className="text-sm text-gray-500">
+                                The analysis data could not be loaded after multiple attempts. Please try refreshing the page.
+                              </p>
+                            </div>
+                          );
+                        }
+                        // Force reload data when analysis is completed but data is missing
+                        console.log(`[CallHistory-RENDER-${renderId}] Triggering loadAnalysisData for missing data`);
+                        loadAnalysisData(analysis.id, selectedRecording?.id);
                         return (
                           <div className="text-center py-8">
-                            <p className="text-gray-500">No analysis result available.</p>
+                            <div className="flex items-center justify-center mb-4">
+                              <Loader2 className="w-6 h-6 mr-2 animate-spin text-blue-600" />
+                              <p className="text-gray-600">Loading analysis data...</p>
+                            </div>
+                            <p className="text-sm text-gray-500">This may take a few moments</p>
                           </div>
                         );
                       }
+                      console.log(`[CallHistory-RENDER-${renderId}] Returning AnalysisDisplay component`);
                       return <AnalysisDisplay analysisResult={analysis.analysisResult} />;
                     }
                     if (activeTab === 'transcription') {
                       const loggableTranscription = typeof analysis.transcription === 'string' ? analysis.transcription.substring(0,100) + '...' : '[Object]';
-                      console.log('[CallHistory] Rendering transcription tab with data:', loggableTranscription);
+                      console.log(`[CallHistory-RENDER-${renderId}] Rendering transcription tab with data:`, loggableTranscription);
                       
                       let transcriptionData: string | ParsedTranscription | undefined = analysis.transcription;
                       if (typeof transcriptionData === 'string') {
@@ -835,10 +1139,36 @@ export default function CallHistoryPage() {
                                 )}
                               </div>
                             ) : (
-                              <div className="text-center py-8">
-                                <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                                <p className="text-gray-500">No transcription available</p>
-                              </div>
+                              /* No transcription data available, force reload if analysis is completed */
+                              (() => {
+                                if (isCompleted && !transcriptionData) {
+                                  console.warn('[CallHistory] Analysis completed but no transcription data, forcing reload...');
+                                  // Check if this analysis has failed permanently
+                                  if (failedAnalysisIds.has(analysis.id)) {
+                                    return (
+                                      <div className="text-center py-8">
+                                        <div className="text-red-600 mb-4">
+                                          <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
+                                          <p className="font-medium">Unable to load transcription data</p>
+                                        </div>
+                                        <p className="text-sm text-gray-500">
+                                          The transcription data could not be loaded after multiple attempts. Please try refreshing the page.
+                                        </p>
+                                      </div>
+                                    );
+                                  }
+                                  loadAnalysisData(analysis.id, selectedRecording?.id);
+                                }
+                                return (
+                                  <div className="text-center py-8">
+                                    <div className="flex items-center justify-center mb-4">
+                                      <Loader2 className="w-6 h-6 mr-2 animate-spin text-blue-600" />
+                                      <p className="text-gray-600">Loading transcription data...</p>
+                                    </div>
+                                    <p className="text-sm text-gray-500">This may take a few moments</p>
+                                  </div>
+                                );
+                              })()
                             )}
                           </div>
                         </div>

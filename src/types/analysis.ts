@@ -240,6 +240,13 @@ export interface CallRecording {
     insights?: AnalysisInsight[];
     callMetrics?: CallMetrics;
   }>;
+  // For optimized API responses
+  latestAnalysis?: {
+    id: string;
+    status: AnalysisStatus;
+    analysisType: string;
+    createdAt: string;
+  };
 }
 
 // ============================================================================

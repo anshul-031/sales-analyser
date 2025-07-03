@@ -94,7 +94,7 @@ export default function CallAnalysisPage() {
       setLoading(true);
       Logger.info('[CallAnalysis] Loading call recordings for user:', user.id);
       
-      const response = await fetch('/api/upload');
+      const response = await fetch('/api/upload?optimized=true');
       const result = await response.json();
       
       if (result.success) {
@@ -203,19 +203,54 @@ export default function CallAnalysisPage() {
     try {
       setAnalyzingCustom(true);
       
-      // Get transcriptions from selected recordings
+      // Get selected recordings that have completed analyses
       const selectedRecordingData = filteredRecordings.filter(r => 
-        selectedRecordings.has(r.id) && r.analyses?.[0]?.transcription
+        selectedRecordings.has(r.id) && 
+        r.analyses?.[0]?.status === 'COMPLETED'
       );
 
       if (selectedRecordingData.length === 0) {
-        alert('Selected recordings do not have transcriptions available');
+        alert('Selected recordings do not have completed analyses available');
         return;
       }
 
+      // Load transcriptions on-demand for selected recordings
+      console.log('[CallAnalysis] Loading transcriptions for', selectedRecordingData.length, 'recordings');
+      const transcriptionPromises = selectedRecordingData.map(async (recording) => {
+        const analysisId = recording.analyses?.[0]?.id;
+        if (!analysisId) return null;
+
+        try {
+          // Use optimized API to load only transcription data
+          const response = await fetch(`/api/analysis-optimized/${analysisId}?include=transcription`);
+          const result = await response.json();
+          
+          if (result.success && result.analysis?.transcription) {
+            return {
+              recording,
+              transcription: result.analysis.transcription
+            };
+          }
+          return null;
+        } catch (error) {
+          console.error('[CallAnalysis] Error loading transcription for', recording.originalName, error);
+          return null;
+        }
+      });
+
+      const transcriptionResults = (await Promise.all(transcriptionPromises))
+        .filter((result): result is { recording: CallRecording; transcription: any } => result !== null);
+      
+      if (transcriptionResults.length === 0) {
+        alert('Unable to load transcriptions for selected recordings. Please try again or select different recordings.');
+        return;
+      }
+
+      console.log('[CallAnalysis] Successfully loaded', transcriptionResults.length, 'transcriptions');
+
       // Combine all transcriptions
-      const combinedTranscription = selectedRecordingData
-        .map(r => `[${r.originalName}]\n${r.analyses?.[0]?.transcription || ''}`)
+      const combinedTranscription = transcriptionResults
+        .map((result) => `[${result.recording.originalName}]\n${result.transcription || ''}`)
         .join('\n\n---\n\n');
 
       // Send custom analysis request
@@ -227,7 +262,7 @@ export default function CallAnalysisPage() {
         body: JSON.stringify({
           transcription: combinedTranscription,
           customPrompt: customQuery,
-          recordingIds: Array.from(selectedRecordings)
+          recordingIds: transcriptionResults.map(result => result.recording.id)
         }),
       });
 
@@ -237,7 +272,7 @@ export default function CallAnalysisPage() {
         setAnalysisResult({
           query: customQuery,
           result: result.analysis,
-          recordingCount: selectedRecordings.size,
+          recordingCount: transcriptionResults.length,
           timestamp: new Date().toISOString()
         });
       } else {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { geminiService } from '@/lib/gemini';
 import { DatabaseStorage } from '@/lib/db';
+import { OptimizedDatabaseStorage, prisma } from '@/lib/db-optimized';
 import { Logger } from '@/lib/utils';
 import { getAuthenticatedUser } from '@/lib/auth';
 
@@ -102,15 +103,30 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
         }, { status: 404 });
       }
     } else if (uploadId) {
-      // Get specific upload data with its analyses
-      const upload = await DatabaseStorage.getUploadById(uploadId);
-      if (upload && upload.userId === user.id) {
-        const analyses = await DatabaseStorage.getAnalysesByUploadId(uploadId);
-        const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
+      // Get specific upload data with its analyses using optimized storage
+      const upload = await OptimizedDatabaseStorage.getUploadDetails(uploadId, user.id);
+      if (upload) {
+        // Get the latest completed analysis for this upload
+        const analysisQuery = await prisma.analysis.findFirst({
+          where: { 
+            uploadId,
+            userId: user.id,
+            status: 'COMPLETED'
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            status: true,
+            createdAt: true,
+          }
+        });
         
-        if (completedAnalyses.length > 0) {
-          const latestAnalysis = completedAnalyses
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+        if (analysisQuery) {
+          // Load transcription and analysis result on-demand
+          const [transcription, analysisResult] = await Promise.all([
+            OptimizedDatabaseStorage.getTranscription(analysisQuery.id, user.id).catch(() => null),
+            OptimizedDatabaseStorage.getAnalysisResult(analysisQuery.id, user.id).catch(() => null)
+          ]);
           
           contextData = `
 **Call Recording: ${upload.originalName}**
@@ -118,13 +134,13 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
 **Upload Date:** ${new Date(upload.uploadedAt).toLocaleDateString()}
 
 **Transcription:**
-${latestAnalysis.transcription || 'No transcription available'}
+${transcription || 'No transcription available'}
 
 **Analysis Results:**
-${JSON.stringify(latestAnalysis.analysisResult, null, 2)}
+${JSON.stringify(analysisResult, null, 2)}
           `;
           contextSource = `Upload: ${upload.originalName}`;
-          Logger.info('[ChatbotAPI] Using specific upload context:', uploadId);
+          Logger.info('[ChatbotAPI] Using specific upload context with optimized loading:', uploadId);
         } else {
           return NextResponse.json({
             success: false,
