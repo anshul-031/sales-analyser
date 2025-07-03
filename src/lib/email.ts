@@ -5,7 +5,7 @@ const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
-const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER;
+const FROM_EMAIL = process.env.FROM_EMAIL || process.env.SMTP_FROM || SMTP_USER;
 
 // Function to dynamically determine base URL from request
 function getBaseUrl(request?: NextRequest): string {

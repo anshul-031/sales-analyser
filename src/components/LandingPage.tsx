@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { 
   BarChart3, 
@@ -12,7 +12,7 @@ import {
   Star,
   CheckCircle,
   ArrowRight,
-  Play,
+  Mail,
   Users,
   TrendingUp,
   Shield,
@@ -20,8 +20,10 @@ import {
   Award,
   Brain
 } from 'lucide-react';
+import ContactForm from './ContactForm';
 
 export default function LandingPage() {
+  const [isContactFormOpen, setIsContactFormOpen] = useState(false);
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
@@ -48,9 +50,12 @@ export default function LandingPage() {
                 Start Analyzing Now
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Link>
-              <button className="inline-flex items-center px-8 py-4 border-2 border-white text-white font-semibold rounded-lg hover:bg-white hover:text-blue-600 transition-colors">
-                <Play className="w-5 h-5 mr-2" />
-                Watch Demo
+              <button 
+                onClick={() => setIsContactFormOpen(true)}
+                className="inline-flex items-center px-8 py-4 border-2 border-white text-white font-semibold rounded-lg hover:bg-white hover:text-blue-600 transition-colors"
+              >
+                <Mail className="w-5 h-5 mr-2" />
+                Contact Us
               </button>
             </div>
           </div>
@@ -432,6 +437,12 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+      
+      {/* Contact Form Modal */}
+      <ContactForm 
+        isOpen={isContactFormOpen}
+        onClose={() => setIsContactFormOpen(false)}
+      />
     </div>
   );
 }
