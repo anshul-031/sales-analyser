@@ -439,6 +439,37 @@ export class DatabaseStorage {
   }
 
   // Cleanup operations
+  static async deleteAllUploadsForUser(userId: string) {
+    try {
+      // Delete in proper order due to foreign key constraints
+      // First delete analysis insights
+      await prisma.analysisInsight.deleteMany({
+        where: { analysis: { userId } },
+      });
+
+      // Then delete call metrics
+      await prisma.callMetrics.deleteMany({
+        where: { analysis: { userId } },
+      });
+
+      // Then delete analyses
+      await prisma.analysis.deleteMany({
+        where: { userId },
+      });
+
+      // Finally delete uploads and get the count
+      const deletedUploads = await prisma.upload.deleteMany({
+        where: { userId },
+      });
+
+      Logger.info(`[Database] Deleted ${deletedUploads.count} uploads and related data for user:`, userId);
+      return deletedUploads.count;
+    } catch (error) {
+      Logger.error('[Database] Error deleting all uploads for user:', error);
+      throw error;
+    }
+  }
+
   static async clearUserData(userId: string) {
     try {
       // Delete in proper order due to foreign key constraints

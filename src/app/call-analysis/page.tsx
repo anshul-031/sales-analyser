@@ -21,36 +21,12 @@ import { Logger } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 
-interface AnalysisResult {
-  query: string;
-  result: string;
-  recordingCount: number;
-  timestamp: string;
-}
-
-interface CallRecording {
-  id: string;
-  filename: string;
-  originalName: string;
-  uploadedAt: string;
-  fileSize: number;
-  mimeType: string;
-  analyses?: Array<{
-    id: string;
-    status: string;
-    transcription?: string;
-    analysisResult?: any;
-    createdAt: string;
-    insights?: any[];
-    callMetrics?: any;
-  }>;
-}
-
-interface TimeFilter {
-  label: string;
-  value: string;
-  days: number;
-}
+import type { 
+  AnalysisUIResult, 
+  CallRecording, 
+  TimeFilter, 
+  AnalysisStatus 
+} from '@/types';
 
 const TIME_FILTERS: TimeFilter[] = [
   { label: 'Past 24 Hours', value: '24h', days: 1 },
@@ -70,7 +46,7 @@ export default function CallAnalysisPage() {
   const [timeFilter, setTimeFilter] = useState<string>('all'); // Changed from '7d' to 'all'
   const [searchQuery, setSearchQuery] = useState('');
   const [customQuery, setCustomQuery] = useState('');
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisUIResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [analyzingCustom, setAnalyzingCustom] = useState(false);
 
@@ -192,7 +168,8 @@ export default function CallAnalysisPage() {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(recording =>
         recording.originalName.toLowerCase().includes(query) ||
-        recording.analyses?.[0]?.transcription?.toLowerCase().includes(query)
+        (typeof recording.analyses?.[0]?.transcription === 'string' && 
+         recording.analyses[0].transcription.toLowerCase().includes(query))
       );
     }
 
@@ -467,10 +444,10 @@ export default function CallAnalysisPage() {
                             <h3 className="text-sm font-medium text-gray-900 truncate">
                               {recording.originalName}
                             </h3>
-                            {recording.analyses?.[0]?.status === 'COMPLETED' && (
+                            {recording.analyses?.[0]?.status === 'completed' && (
                               <CheckCircle className="w-4 h-4 text-green-500" />
                             )}
-                            {recording.analyses?.[0]?.status === 'FAILED' && (
+                            {recording.analyses?.[0]?.status === 'failed' && (
                               <XCircle className="w-4 h-4 text-red-500" />
                             )}
                           </div>
@@ -489,7 +466,7 @@ export default function CallAnalysisPage() {
                             )}
                           </div>
                           
-                          {recording.analyses?.[0]?.transcription && (
+                          {recording.analyses?.[0]?.transcription && typeof recording.analyses[0].transcription === 'string' && (
                             <p className="text-xs text-gray-600 mt-2 line-clamp-2">
                               {recording.analyses[0].transcription.substring(0, 150)}...
                             </p>

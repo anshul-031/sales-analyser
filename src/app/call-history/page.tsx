@@ -19,49 +19,17 @@ import { Logger } from '@/lib/utils';
 import AnalysisDisplay from '@/components/AnalysisDisplay';
 import Chatbot from '@/components/Chatbot';
 
-interface CallRecording {
-  id: string;
-  filename: string;
-  originalName: string;
-  uploadedAt: string;
-  fileSize: number;
-  mimeType: string;
-  analyses?: Array<{
-    id:string;
-    status: string;
-    transcription?: string | DiarizedTranscription;
-    analysisResult?: AnalysisResult;
-    createdAt: string;
-  }>;
-}
-
-interface SpeakerSentiment {
-  speaker: string;
-  sentiment: string;
-}
-
-interface SpeakerTone {
-  speaker: string;
-  tone: string;
-}
-
-interface AnalysisResult {
-  speaker_mapping?: { [key: string]: string };
-  sentiment_analysis?: SpeakerSentiment[];
-  tone_analysis?: SpeakerTone[];
-  [key: string]: any;
-}
-
-interface TranscriptionSegment {
-    speaker: string;
-    text: string;
-    timestamp?: string;
-}
-
-interface DiarizedTranscription {
-    original_language?: string;
-    diarized_transcription: TranscriptionSegment[];
-}
+import type { 
+  CallRecording, 
+  SpeakerSentiment, 
+  SpeakerTone, 
+  AnalysisResultData, 
+  LegacyAnalysisResult,
+  TranscriptionSegment, 
+  ParsedTranscription,
+  SentimentType,
+  ToneType
+} from '@/types';
 
 export default function CallHistoryPage() {
   const { user, loading: authLoading } = useAuth();
@@ -131,7 +99,15 @@ export default function CallHistoryPage() {
   const handleRecordingSelect = (recording: CallRecording) => {
     console.log('[CallHistory] Selecting recording:', recording);
     console.log('[CallHistory] Recording analyses:', recording.analyses);
+    console.log('[CallHistory] Current activeTab before selection:', activeTab);
     setSelectedRecording(recording);
+    console.log('[CallHistory] Current activeTab after selection:', activeTab);
+    
+    // Reset to analysis tab when selecting a new recording
+    if (activeTab !== 'analysis') {
+      console.log('[CallHistory] Resetting activeTab to analysis for new recording');
+      setActiveTab('analysis');
+    }
   };
 
   const handleDelete = async (recordingId: string) => {
@@ -188,7 +164,12 @@ export default function CallHistoryPage() {
   };
 
   const handleTabChange = (tab: string) => {
-    console.log('[CallHistory] Changing tab to:', tab);
+    console.log('[CallHistory] Changing tab from:', activeTab, 'to:', tab);
+    console.log('[CallHistory] Selected recording:', selectedRecording?.originalName);
+    console.log('[CallHistory] Recording has analysis:', selectedRecording?.analyses?.length);
+    if (selectedRecording?.analyses?.length) {
+      console.log('[CallHistory] Analysis status:', selectedRecording.analyses[0].status);
+    }
     setActiveTab(tab);
     // Clear translation when switching tabs
     if (tab !== 'transcription') {
@@ -389,18 +370,40 @@ export default function CallHistoryPage() {
                   const analysis = selectedRecording.analyses[0];
                   console.log('[CallHistory] Selected recording analysis:', analysis);
                   console.log('[CallHistory] Analysis status:', analysis.status);
+                  console.log('[CallHistory] Analysis status type:', typeof analysis.status);
                   console.log('[CallHistory] Active tab:', activeTab);
+                  console.log('[CallHistory] Analysis result exists:', !!analysis.analysisResult);
+                  console.log('[CallHistory] Transcription exists:', !!analysis.transcription);
+                  console.log('[CallHistory] Analysis result type:', typeof analysis.analysisResult);
+                  console.log('[CallHistory] Analysis result content:', analysis.analysisResult);
                   
-                  if (analysis.status === 'COMPLETED') {
+                  // Handle both uppercase and lowercase status values for compatibility
+                  const isCompleted = analysis.status === 'completed' || analysis.status === 'COMPLETED';
+                  const isFailed = analysis.status === 'failed' || analysis.status === 'FAILED';
+                  const isPending = analysis.status === 'pending' || analysis.status === 'PENDING';
+                  const isProcessing = analysis.status === 'processing' || analysis.status === 'PROCESSING';
+                  
+                  console.log('[CallHistory] Status checks - isCompleted:', isCompleted, 'isFailed:', isFailed, 'isPending:', isPending, 'isProcessing:', isProcessing);
+                  
+                  if (isCompleted) {
+                    console.log('[CallHistory] Analysis is completed, checking active tab...');
                     if (activeTab === 'analysis') {
                       console.log('[CallHistory] Rendering analysis tab with data:', analysis.analysisResult);
+                      if (!analysis.analysisResult) {
+                        console.warn('[CallHistory] No analysis result available for completed analysis');
+                        return (
+                          <div className="text-center py-8">
+                            <p className="text-gray-500">No analysis result available.</p>
+                          </div>
+                        );
+                      }
                       return <AnalysisDisplay analysisResult={analysis.analysisResult} />;
                     }
                     if (activeTab === 'transcription') {
                       const loggableTranscription = typeof analysis.transcription === 'string' ? analysis.transcription.substring(0,100) + '...' : '[Object]';
                       console.log('[CallHistory] Rendering transcription tab with data:', loggableTranscription);
                       
-                      let transcriptionData: string | DiarizedTranscription | undefined = analysis.transcription;
+                      let transcriptionData: string | ParsedTranscription | undefined = analysis.transcription;
                       if (typeof transcriptionData === 'string') {
                         try {
                           transcriptionData = JSON.parse(transcriptionData);
@@ -409,7 +412,7 @@ export default function CallHistoryPage() {
                         }
                       }
 
-                      const analysisResult = analysis.analysisResult;
+                      const analysisResult = analysis.analysisResult as any; // Using any for legacy compatibility
                       console.log('[CallHistory] Analysis Result for Transcription Tab:', analysisResult);
 
                       // Extract sentiment and tone data directly from transcription if available
@@ -440,7 +443,7 @@ export default function CallHistoryPage() {
                           const dominantSentiment = sentiments.reduce((a, b, _, arr) => 
                             arr.filter(v => v === a).length >= arr.filter(v => v === b).length ? a : b
                           );
-                          sentimentAnalysis.push({ speaker, sentiment: dominantSentiment });
+                          sentimentAnalysis.push({ speaker, sentiment: dominantSentiment as SentimentType });
                         });
 
                         Object.keys(speakerTones).forEach(speaker => {
@@ -448,7 +451,7 @@ export default function CallHistoryPage() {
                           const dominantTone = tones.reduce((a, b, _, arr) => 
                             arr.filter(v => v === a).length >= arr.filter(v => v === b).length ? a : b
                           );
-                          toneAnalysis.push({ speaker, tone: dominantTone });
+                          toneAnalysis.push({ speaker, tone: dominantTone as ToneType });
                         });
                       }
 
@@ -516,7 +519,7 @@ export default function CallHistoryPage() {
                       console.log('[CallHistory] Customer Name:', customerName);
 
                       const speakers: string[] = (typeof transcriptionData === 'object' && transcriptionData?.diarized_transcription) 
-                        ? [...new Set(transcriptionData.diarized_transcription.map((s: TranscriptionSegment) => s.speaker))] 
+                        ? [...new Set(transcriptionData.diarized_transcription.map((s: any) => s.speaker))] 
                         : [];
                       console.log('[CallHistory] Speakers found in transcription:', speakers);
                       const isChatView = speakers.length === 2;
@@ -640,7 +643,7 @@ export default function CallHistoryPage() {
                                         
                                         {/* Diarized conversation */}
                                         <div className="space-y-3">
-                                          {(transcriptionData as DiarizedTranscription).diarized_transcription.map((segment: TranscriptionSegment, index: number) => {
+                                          {(transcriptionData as ParsedTranscription).diarized_transcription.map((segment: any, index: number) => {
                                             const speakerName = speakerMapping[segment.speaker] || segment.speaker;
                                             const isSpeaker1 = isChatView && segment.speaker === speakers[0];
 
@@ -770,7 +773,7 @@ export default function CallHistoryPage() {
                         </div>
                       );
                     }
-                  } else if (analysis.status === 'FAILED') {
+                  } else if (isFailed) {
                     console.log('[CallHistory] Analysis failed');
                     if (activeTab === 'chat') {
                       return (
@@ -822,6 +825,8 @@ export default function CallHistoryPage() {
                     );
                   } else {
                     console.log('[CallHistory] Analysis in progress, status:', analysis.status);
+                    console.log('[CallHistory] Expected status should be pending or processing, but got:', analysis.status);
+                    console.log('[CallHistory] Status check results - isPending:', isPending, 'isProcessing:', isProcessing);
                     if (activeTab === 'chat') {
                       return (
                         <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full">

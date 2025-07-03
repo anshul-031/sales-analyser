@@ -24,10 +24,7 @@ import {
   Lightbulb,
   FileText
 } from 'lucide-react';
-
-interface AnalysisDisplayProps {
-  analysisResult: any;
-}
+import type { AnalysisDisplayProps, AnalysisResultData, ColorScheme } from '@/types';
 
 const getIconForKey = (key: string) => {
   const lowerKey = key.toLowerCase();
@@ -51,7 +48,7 @@ const getIconForKey = (key: string) => {
   return <TrendingUp className="w-5 h-5" />;
 };
 
-const getCardColorScheme = (key: string) => {
+const getCardColorScheme = (key: string): ColorScheme => {
   const lowerKey = key.toLowerCase();
   if (lowerKey.includes('sentiment') || lowerKey.includes('emotion')) 
     return { bg: 'bg-gradient-to-br from-pink-50 to-rose-50', border: 'border-pink-200', icon: 'text-pink-600' };
@@ -378,7 +375,7 @@ const renderValue = (value: any, level = 0, parentKey = ''): React.ReactElement 
   );
 };
 
-const AnalysisDisplay: React.FC<AnalysisDisplayProps & { isNested?: boolean }> = ({ analysisResult, isNested = false }) => {
+const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult, isNested = false }) => {
   console.log('[AnalysisDisplay] Received analysisResult:', analysisResult);
   
   if (!analysisResult) {
