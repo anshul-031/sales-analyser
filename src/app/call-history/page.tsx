@@ -11,7 +11,8 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
-  MessageCircle
+  MessageCircle,
+  User
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
@@ -43,6 +44,7 @@ export default function CallHistoryPage() {
   const [targetLanguage, setTargetLanguage] = useState('en');
   const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(['speaker-analysis', 'transcription-segments']));
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -279,6 +281,16 @@ export default function CallHistoryPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const toggleSection = (sectionId: string) => {
+    const newCollapsed = new Set(collapsedSections);
+    if (newCollapsed.has(sectionId)) {
+      newCollapsed.delete(sectionId);
+    } else {
+      newCollapsed.add(sectionId);
+    }
+    setCollapsedSections(newCollapsed);
+  };
+
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -349,7 +361,7 @@ export default function CallHistoryPage() {
             <div className="p-4 border-b border-gray-200 bg-white">
               <div className="flex gap-2">
                 <button onClick={() => handleTabChange('analysis')} className={`px-4 py-2 text-sm rounded-md ${activeTab === 'analysis' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
-                  <BarChart3 className="w-4 h-4 inline-block mr-2"/>Analysis
+                  <BarChart3 className="w-4 h-4 inline-block mr-2"/>Performance Metrics
                 </button>
                 <button onClick={() => handleTabChange('transcription')} className={`px-4 py-2 text-sm rounded-md ${activeTab === 'transcription' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
                   <FileText className="w-4 h-4 inline-block mr-2"/>Transcription
@@ -538,8 +550,24 @@ export default function CallHistoryPage() {
                                 </p>
                               </div>
                               
-                              {/* Translation Controls */}
-                              <div className="flex items-center gap-3">
+                              {/* Translation Controls & View Options */}
+                              <div className="flex items-center gap-3 flex-wrap">
+                                {/* Quick Expand/Collapse Controls */}
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setCollapsedSections(new Set())}
+                                    className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors"
+                                  >
+                                    Expand All
+                                  </button>
+                                  <button
+                                    onClick={() => setCollapsedSections(new Set(['speaker-analysis', 'transcription-segments']))}
+                                    className="px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
+                                  >
+                                    Collapse All
+                                  </button>
+                                </div>
+
                                 {/* Toggle for detailed analysis */}
                                 <label className="flex items-center gap-2 text-sm text-gray-600">
                                   <input
@@ -548,7 +576,7 @@ export default function CallHistoryPage() {
                                     onChange={(e) => setShowDetailedAnalysis(e.target.checked)}
                                     className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                   />
-                                  Show speaker tone, sentiment & confidence details
+                                  Show detailed metrics
                                 </label>
 
                                 <select
@@ -595,6 +623,47 @@ export default function CallHistoryPage() {
                           <div className="p-6">
                             {transcriptionData ? (
                               <div>
+                                {/* Transcription Summary */}
+                                <div className="bg-gradient-to-r from-blue-50 to-green-50 p-4 rounded-lg mb-6 border border-blue-200">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <h4 className="font-semibold text-gray-800 mb-2">Transcription Overview</h4>
+                                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                        {typeof transcriptionData === 'object' && transcriptionData?.diarized_transcription && (
+                                          <>
+                                            <div className="text-center">
+                                              <span className="block text-lg font-bold text-blue-600">
+                                                {speakers.length}
+                                              </span>
+                                              <span className="text-gray-600">Speakers</span>
+                                            </div>
+                                            <div className="text-center">
+                                              <span className="block text-lg font-bold text-green-600">
+                                                {(transcriptionData as ParsedTranscription).diarized_transcription.length}
+                                              </span>
+                                              <span className="text-gray-600">Segments</span>
+                                            </div>
+                                            <div className="text-center">
+                                              <span className="block text-lg font-bold text-purple-600">
+                                                {sentimentAnalysis.length > 0 ? 
+                                                  sentimentAnalysis.filter(s => s.sentiment === 'positive').length : '—'
+                                                }
+                                              </span>
+                                              <span className="text-gray-600">Positive</span>
+                                            </div>
+                                            <div className="text-center">
+                                              <span className="block text-lg font-bold text-orange-600">
+                                                {transcriptionData.original_language || 'Auto-detected'}
+                                              </span>
+                                              <span className="text-gray-600">Language</span>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
                                 {/* Show translation if available */}
                                 {translatedText ? (
                                   <div className="space-y-4">
@@ -623,73 +692,135 @@ export default function CallHistoryPage() {
                                           </div>
                                         )}
 
-                                        {/* Speaker sentiment and tone */}
+                                        {/* Speaker Analysis - Collapsible */}
                                         {(sentimentAnalysis.length > 0 || toneAnalysis.length > 0) && (
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                            {speakers.map((speaker: string) => {
-                                                const speakerName = speakerMapping[speaker] || speaker;
-                                                const sentiment = sentimentAnalysis.find((s: SpeakerSentiment) => s.speaker === speaker);
-                                                const tone = toneAnalysis.find((t: SpeakerTone) => t.speaker === speaker);
-                                                return (
-                                                    <div key={speaker} className="p-3 bg-gray-100 rounded-lg border">
-                                                        <h4 className="font-semibold text-gray-800">{speakerName}</h4>
-                                                        {sentiment && <p className="text-sm text-gray-600">Sentiment: <span className="font-medium">{sentiment.sentiment}</span></p>}
-                                                        {tone && <p className="text-sm text-gray-600">Tone: <span className="font-medium">{tone.tone}</span></p>}
-                                                    </div>
-                                                )
-                                            })}
+                                          <div className="border border-gray-200 rounded-lg mb-4">
+                                            <button
+                                              onClick={() => toggleSection('speaker-analysis')}
+                                              className="w-full p-4 text-left hover:bg-gray-50 flex justify-between items-center rounded-t-lg"
+                                            >
+                                              <div className="flex items-center gap-2">
+                                                <User className="w-5 h-5 text-blue-600" />
+                                                <span className="font-medium text-gray-700">Speaker Analysis</span>
+                                                <span className="text-sm text-gray-500 bg-blue-50 px-2 py-1 rounded-full">
+                                                  {speakers.length} speakers
+                                                </span>
+                                              </div>
+                                              <span className="text-gray-400">
+                                                {collapsedSections.has('speaker-analysis') ? '▼' : '▲'}
+                                              </span>
+                                            </button>
+                                            
+                                            {!collapsedSections.has('speaker-analysis') && (
+                                              <div className="border-t border-gray-200 p-4 bg-gray-50">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                  {speakers.map((speaker: string) => {
+                                                      const speakerName = speakerMapping[speaker] || speaker;
+                                                      const sentiment = sentimentAnalysis.find((s: SpeakerSentiment) => s.speaker === speaker);
+                                                      const tone = toneAnalysis.find((t: SpeakerTone) => t.speaker === speaker);
+                                                      return (
+                                                          <div key={speaker} className="p-3 bg-white rounded-lg border shadow-sm">
+                                                              <h4 className="font-semibold text-gray-800 mb-2">{speakerName}</h4>
+                                                              <div className="space-y-1">
+                                                                {sentiment && (
+                                                                  <div className="flex items-center gap-2">
+                                                                    <span className="text-sm text-gray-600">Sentiment:</span>
+                                                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                                                      sentiment.sentiment === 'positive' ? 'bg-green-100 text-green-800' :
+                                                                      sentiment.sentiment === 'negative' ? 'bg-red-100 text-red-800' :
+                                                                      'bg-gray-100 text-gray-800'
+                                                                    }`}>
+                                                                      {sentiment.sentiment}
+                                                                    </span>
+                                                                  </div>
+                                                                )}
+                                                                {tone && (
+                                                                  <div className="flex items-center gap-2">
+                                                                    <span className="text-sm text-gray-600">Tone:</span>
+                                                                    <span className="text-xs px-2 py-1 rounded-full font-medium bg-blue-100 text-blue-800">
+                                                                      {tone.tone}
+                                                                    </span>
+                                                                  </div>
+                                                                )}
+                                                              </div>
+                                                          </div>
+                                                      )
+                                                  })}
+                                                </div>
+                                              </div>
+                                            )}
                                           </div>
                                         )}
                                         
-                                        {/* Diarized conversation */}
-                                        <div className="space-y-3">
-                                          {(transcriptionData as ParsedTranscription).diarized_transcription.map((segment: any, index: number) => {
-                                            const speakerName = speakerMapping[segment.speaker] || segment.speaker;
-                                            const isSpeaker1 = isChatView && segment.speaker === speakers[0];
+                                        {/* Conversation Transcript - Collapsible */}
+                                        <div className="border border-gray-200 rounded-lg">
+                                          <button
+                                            onClick={() => toggleSection('transcription-segments')}
+                                            className="w-full p-4 text-left hover:bg-gray-50 flex justify-between items-center rounded-t-lg"
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <MessageCircle className="w-5 h-5 text-green-600" />
+                                              <span className="font-medium text-gray-700">Conversation Transcript</span>
+                                              <span className="text-sm text-gray-500 bg-green-50 px-2 py-1 rounded-full">
+                                                {(transcriptionData as ParsedTranscription).diarized_transcription.length} segments
+                                              </span>
+                                            </div>
+                                            <span className="text-gray-400">
+                                              {collapsedSections.has('transcription-segments') ? '▼' : '▲'}
+                                            </span>
+                                          </button>
+                                          
+                                          {!collapsedSections.has('transcription-segments') && (
+                                            <div className="border-t border-gray-200 p-4 space-y-3 max-h-96 overflow-y-auto">
+                                              {(transcriptionData as ParsedTranscription).diarized_transcription.map((segment: any, index: number) => {
+                                                const speakerName = speakerMapping[segment.speaker] || segment.speaker;
+                                                const isSpeaker1 = isChatView && segment.speaker === speakers[0];
 
-                                            return (
-                                              <div key={index} className={`flex flex-col ${isChatView ? (isSpeaker1 ? 'items-start' : 'items-end') : 'items-start'}`}>
-                                                  <div className={`flex items-center gap-2 ${isChatView && !isSpeaker1 ? 'flex-row-reverse' : ''}`}>
-                                                      <span className="font-bold text-sm text-gray-600">{speakerName}</span>
-                                                      {showDetailedAnalysis && (segment as any).sentiment && (
-                                                        <span className={`text-xs px-2 py-1 rounded-full ${
-                                                          (segment as any).sentiment === 'positive' ? 'bg-green-100 text-green-800' :
-                                                          (segment as any).sentiment === 'negative' ? 'bg-red-100 text-red-800' :
-                                                          'bg-gray-100 text-gray-800'
-                                                        }`}>
-                                                          {(segment as any).sentiment}
-                                                        </span>
-                                                      )}
-                                                      {showDetailedAnalysis && (segment as any).tone && (
-                                                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
-                                                          {(segment as any).tone}
-                                                        </span>
-                                                      )}
-                                                  </div>
-                                                  <div className={`mt-1 p-3 rounded-lg max-w-xl ${isChatView ? (isSpeaker1 ? 'bg-indigo-50' : 'bg-green-50') : 'bg-gray-100'}`}>
-                                                      <p className="text-gray-800 leading-relaxed">
-                                                          {segment.text}
-                                                      </p>
-                                                      <div className="flex items-center justify-between mt-2">
-                                                        {segment.timestamp && (
-                                                            <p className={`text-xs text-gray-400 ${isChatView ? (isSpeaker1 ? 'text-left' : 'text-right') : 'text-left'}`}>
-                                                                {segment.timestamp}
-                                                            </p>
-                                                        )}
-                                                        {showDetailedAnalysis && (segment as any).confidence_level && (
-                                                          <span className={`text-xs px-2 py-1 rounded ${
-                                                            (segment as any).confidence_level === 'high' ? 'bg-green-50 text-green-700' :
-                                                            (segment as any).confidence_level === 'medium' ? 'bg-yellow-50 text-yellow-700' :
-                                                            'bg-gray-50 text-gray-700'
-                                                          }`}>
-                                                            {(segment as any).confidence_level} confidence
-                                                          </span>
-                                                        )}
+                                                return (
+                                                  <div key={index} className={`flex flex-col ${isChatView ? (isSpeaker1 ? 'items-start' : 'items-end') : 'items-start'}`}>
+                                                      <div className={`flex items-center gap-2 ${isChatView && !isSpeaker1 ? 'flex-row-reverse' : ''}`}>
+                                                          <span className="font-bold text-sm text-gray-600">{speakerName}</span>
+                                                          {showDetailedAnalysis && (segment as any).sentiment && (
+                                                            <span className={`text-xs px-2 py-1 rounded-full ${
+                                                              (segment as any).sentiment === 'positive' ? 'bg-green-100 text-green-800' :
+                                                              (segment as any).sentiment === 'negative' ? 'bg-red-100 text-red-800' :
+                                                              'bg-gray-100 text-gray-800'
+                                                            }`}>
+                                                              {(segment as any).sentiment}
+                                                            </span>
+                                                          )}
+                                                          {showDetailedAnalysis && (segment as any).tone && (
+                                                            <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                                                              {(segment as any).tone}
+                                                            </span>
+                                                          )}
+                                                      </div>
+                                                      <div className={`mt-1 p-3 rounded-lg max-w-xl ${isChatView ? (isSpeaker1 ? 'bg-indigo-50' : 'bg-green-50') : 'bg-gray-100'}`}>
+                                                          <p className="text-gray-800 leading-relaxed">
+                                                              {segment.text}
+                                                          </p>
+                                                          <div className="flex items-center justify-between mt-2">
+                                                            {segment.timestamp && (
+                                                                <p className={`text-xs text-gray-400 ${isChatView ? (isSpeaker1 ? 'text-left' : 'text-right') : 'text-left'}`}>
+                                                                    {segment.timestamp}
+                                                                </p>
+                                                            )}
+                                                            {showDetailedAnalysis && (segment as any).confidence_level && (
+                                                              <span className={`text-xs px-2 py-1 rounded ${
+                                                                (segment as any).confidence_level === 'high' ? 'bg-green-50 text-green-700' :
+                                                                (segment as any).confidence_level === 'medium' ? 'bg-yellow-50 text-yellow-700' :
+                                                                'bg-gray-50 text-gray-700'
+                                                              }`}>
+                                                                {(segment as any).confidence_level} confidence
+                                                              </span>
+                                                            )}
+                                                          </div>
                                                       </div>
                                                   </div>
-                                              </div>
-                                            )
-                                          })}
+                                                )
+                                              })}
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     ) : (

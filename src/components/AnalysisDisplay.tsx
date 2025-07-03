@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   User, 
   MessageSquare, 
@@ -22,7 +22,11 @@ import {
   Volume2,
   Brain,
   Lightbulb,
-  FileText
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  BarChart3,
+  Info
 } from 'lucide-react';
 import type { AnalysisDisplayProps, AnalysisResultData, ColorScheme } from '@/types';
 
@@ -375,7 +379,61 @@ const renderValue = (value: any, level = 0, parentKey = ''): React.ReactElement 
   );
 };
 
+// Core analysis parameters that should be displayed
+const CORE_ANALYSIS_PARAMETERS = [
+  'communication_skills',
+  'product_knowledge', 
+  'customer_needs_analysis',
+  'closing_techniques',
+  'overall_performance',
+  'emotional_intelligence'
+];
+
+// Keys to exclude from display (transcription and other non-parameter data)
+const EXCLUDED_KEYS = [
+  'transcription',
+  'diarized_transcription', 
+  'original_language',
+  'english_translation',
+  'conversation_summary',
+  'speaker_profiles',
+  'speaker_mapping',
+  'customer_name',
+  'metadata',
+  'type',
+  'analysisDate',
+  'overallScore',
+  'timestamp',
+  'createdAt',
+  'updatedAt'
+];
+
+const isAnalysisParameter = (key: string, value: any): boolean => {
+  // Check if it's a core analysis parameter
+  if (CORE_ANALYSIS_PARAMETERS.includes(key)) {
+    return true;
+  }
+  
+  // Check if it's excluded
+  if (EXCLUDED_KEYS.includes(key)) {
+    return false;
+  }
+  
+  // Check if the value has analysis parameter structure (score, summary, etc.)
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    const hasAnalysisStructure = 'score' in value || 
+                                'summary' in value || 
+                                ('strengths' in value && 'improvements' in value);
+    return hasAnalysisStructure;
+  }
+  
+  return false;
+};
+
 const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult, isNested = false }) => {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'compact' | 'detailed'>('compact');
+  
   console.log('[AnalysisDisplay] Received analysisResult:', analysisResult);
   
   if (!analysisResult) {
@@ -404,35 +462,107 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult, isNes
     );
   }
 
-  const entries = Object.entries(analysisResult);
-  console.log('[AnalysisDisplay] Analysis entries:', entries.length);
+  // Filter entries to show only analysis parameters
+  let entries = Object.entries(analysisResult);
+  
+  // If this is a structured analysis result with a 'parameters' field, use that
+  if (analysisResult.parameters && typeof analysisResult.parameters === 'object') {
+    entries = Object.entries(analysisResult.parameters);
+  } else {
+    // Filter the entries to show only analysis parameters
+    entries = entries.filter(([key, value]) => isAnalysisParameter(key, value));
+  }
+  
+  console.log('[AnalysisDisplay] Filtered analysis parameters:', entries.length);
 
   if (entries.length === 0) {
     return (
       <div className="p-12 text-center bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl">
         <div className="bg-white p-6 rounded-xl shadow-sm inline-block">
           <Brain className="w-16 h-16 mx-auto mb-4 text-blue-400" />
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">Empty Analysis</h3>
-          <p className="text-gray-500">The analysis completed but no parameters were generated.</p>
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">No Performance Parameters</h3>
+          <p className="text-gray-500">No analysis parameters were found for this recording.</p>
         </div>
       </div>
     );
   }
 
-  const containerClasses = isNested ? 'space-y-4' : 'space-y-6';
+  const toggleSection = (key: string) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(key)) {
+      newExpanded.delete(key);
+    } else {
+      newExpanded.add(key);
+    }
+    setExpandedSections(newExpanded);
+  };
+
+  const expandAll = () => {
+    setExpandedSections(new Set(entries.map(([key]) => key)));
+  };
+
+  const collapseAll = () => {
+    setExpandedSections(new Set());
+  };
+
+  // Extract summary information from parameters
+  const getSummaryFromParameter = (value: any) => {
+    if (typeof value === 'object' && value !== null) {
+      if ('score' in value) return `Score: ${value.score}/10`;
+      if ('summary' in value) return value.summary;
+      if ('rating' in value) return `Rating: ${value.rating}`;
+      if (Array.isArray(value)) return `${value.length} items`;
+      return `${Object.keys(value).length} details`;
+    }
+    if (typeof value === 'string' && value.length > 100) {
+      return value.substring(0, 100) + '...';
+    }
+    return value;
+  };
 
   return (
     <div className="bg-gradient-to-br from-gray-50 to-slate-50 p-6 rounded-2xl">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
-        <div className="p-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-white shadow-md">
-          <Brain className="w-6 h-6" />
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl text-white shadow-md">
+            <Brain className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Performance Analysis</h2>
+            <p className="text-sm text-gray-600">{entries.length} performance parameters evaluated</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-gray-800">Call Analysis Results</h2>
-          <p className="text-sm text-gray-600">{entries.length} analysis parameters generated</p>
-        </div>
-        <div className="ml-auto">
+        
+        <div className="flex items-center gap-3">
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewMode(viewMode === 'compact' ? 'detailed' : 'compact')}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              {viewMode === 'compact' ? <BarChart3 className="w-4 h-4" /> : <Info className="w-4 h-4" />}
+              {viewMode === 'compact' ? 'Detailed View' : 'Compact View'}
+            </button>
+          </div>
+
+          {/* Expand/Collapse Controls */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={expandAll}
+              className="px-3 py-2 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              Expand All
+            </button>
+            <button
+              onClick={collapseAll}
+              className="px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Collapse All
+            </button>
+          </div>
+
+          {/* Status Badge */}
           <div className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
             <CheckCircle className="w-4 h-4" />
             <span>Complete</span>
@@ -441,42 +571,54 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult, isNes
       </div>
 
       {/* Analysis Parameters */}
-      <div className={containerClasses}>
+      <div className="space-y-3">
         {entries.map(([key, value], index) => {
           console.log(`[AnalysisDisplay] Processing key: ${key}, value:`, value);
           const colorScheme = getCardColorScheme(key);
+          const isExpanded = expandedSections.has(key);
+          const summary = getSummaryFromParameter(value);
+          
           return (
             <div 
               key={key} 
-              className={`${colorScheme.bg} p-6 rounded-2xl border ${colorScheme.border} shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] group`}
+              className={`${colorScheme.bg} border ${colorScheme.border} rounded-xl shadow-sm hover:shadow-md transition-all duration-200`}
             >
-              <div className="flex items-center gap-4 mb-4">
-                <div className={`p-3 rounded-xl bg-white shadow-md ${colorScheme.icon} group-hover:scale-110 transition-transform duration-200`}>
-                  {getIconForKey(key)}
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-xl text-gray-800 mb-1 group-hover:text-gray-900 transition-colors">{formatKey(key)}</h4>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-current opacity-40 group-hover:opacity-60 transition-opacity" />
-                    <span className="text-sm text-gray-600 font-medium">Analysis Parameter #{index + 1}</span>
+              {/* Parameter Header - Always Visible */}
+              <button
+                onClick={() => toggleSection(key)}
+                className="w-full p-4 flex items-center justify-between hover:bg-white/20 rounded-xl transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg bg-white shadow-sm ${colorScheme.icon}`}>
+                    {getIconForKey(key)}
+                  </div>
+                  <div className="text-left">
+                    <h4 className="font-semibold text-gray-800">{formatKey(key)}</h4>
+                    {viewMode === 'compact' && (
+                      <p className="text-sm text-gray-600 mt-1">{summary}</p>
+                    )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="bg-white/70 backdrop-blur-sm px-3 py-1 rounded-full group-hover:bg-white/90 transition-colors">
-                    <span className="text-xs font-semibold text-gray-700">
-                      {typeof value === 'object' && value !== null && !Array.isArray(value) 
-                        ? `${Object.keys(value).length} sub-items` 
-                        : Array.isArray(value) 
-                          ? `${value.length} items`
-                          : typeof value
-                      }
-                    </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 bg-white/50 px-2 py-1 rounded-full">
+                    #{index + 1}
+                  </span>
+                  {isExpanded ? (
+                    <ChevronUp className="w-5 h-5 text-gray-600" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-600" />
+                  )}
+                </div>
+              </button>
+
+              {/* Parameter Details - Collapsible */}
+              {isExpanded && (
+                <div className="px-4 pb-4 border-t border-white/30">
+                  <div className="pt-4 pl-2 border-l-2 border-white/40">
+                    {renderValue(value, 0, key)}
                   </div>
                 </div>
-              </div>
-              <div className="pl-6 border-l-4 border-white/30 group-hover:border-white/50 transition-colors">
-                {renderValue(value, 0, key)}
-              </div>
+              )}
             </div>
           );
         })}
@@ -486,7 +628,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({ analysisResult, isNes
       <div className="mt-8 pt-4 border-t border-gray-200 text-center">
         <div className="inline-flex items-center gap-2 text-sm text-gray-500">
           <Sparkles className="w-4 h-4" />
-          <span>Analysis powered by AI • Generated automatically from call recording</span>
+          <span>Performance metrics powered by AI • Focused on key sales competencies</span>
         </div>
       </div>
     </div>
