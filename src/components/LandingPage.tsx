@@ -55,7 +55,7 @@ export default function LandingPage() {
                 className="inline-flex items-center px-8 py-4 border-2 border-white text-white font-semibold rounded-lg hover:bg-white hover:text-blue-600 transition-colors"
               >
                 <Mail className="w-5 h-5 mr-2" />
-                Contact Us
+                Contact Sales
               </button>
             </div>
           </div>
@@ -378,13 +378,13 @@ export default function LandingPage() {
               Get Started Free
               <ArrowRight className="w-5 h-5 ml-2" />
             </Link>
-            <Link
-              href="/analytics"
+            <button 
+              onClick={() => setIsContactFormOpen(true)}
               className="inline-flex items-center px-8 py-4 border-2 border-white text-white font-semibold rounded-lg hover:bg-white hover:text-blue-600 transition-colors"
             >
               <BarChart3 className="w-5 h-5 mr-2" />
-              View Analytics
-            </Link>
+              Schedule Demo
+            </button>
           </div>
         </div>
       </section>

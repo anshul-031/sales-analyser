@@ -107,7 +107,10 @@ export async function POST(request: NextRequest) {
     if (!adminEmail) {
       console.error('ADMIN_EMAIL not configured');
       return NextResponse.json(
-        { success: false, error: 'Email service not configured' },
+        { 
+          success: false, 
+          error: 'Contact form is temporarily unavailable. Please try again later or contact us directly.' 
+        },
         { status: 500 }
       );
     }
@@ -120,8 +123,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (!emailSent) {
+      console.error('Failed to send contact form email');
       return NextResponse.json(
-        { success: false, error: 'Failed to send email' },
+        { 
+          success: false, 
+          error: 'Failed to send your message. Please try again later.' 
+        },
         { status: 500 }
       );
     }
