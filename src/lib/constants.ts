@@ -57,7 +57,36 @@ export const POLLING_CONFIG = {
   VISIBILITY_DEBOUNCE_DELAY: 500, // 500ms
 } as const;
 
+// Database Configuration
+export const DATABASE_CONFIG = {
+  // Connection timeout in milliseconds (30 seconds)
+  CONNECTION_TIMEOUT: 30 * 1000,
+  
+  // Query timeout in milliseconds (60 seconds)
+  QUERY_TIMEOUT: 60 * 1000,
+  
+  // Maximum number of retries for database operations
+  MAX_RETRIES: 3,
+  
+  // Base delay for exponential backoff (1 second)
+  BASE_RETRY_DELAY: 1000,
+  
+  // Maximum delay for exponential backoff (30 seconds)
+  MAX_RETRY_DELAY: 30 * 1000,
+  
+  // Connection pool settings
+  CONNECTION_POOL: {
+    MIN: 2,
+    MAX: 10,
+    TIMEOUT: 30000, // 30 seconds
+    IDLE_TIMEOUT: 10000, // 10 seconds
+  },
+} as const;
+
 // Export commonly used values for convenience
 export const MAX_FILE_SIZE = FILE_UPLOAD_CONFIG.MAX_FILE_SIZE;
 export const MAX_FILES = FILE_UPLOAD_CONFIG.MAX_FILES;
 export const CHUNK_SIZE = FILE_UPLOAD_CONFIG.CHUNK_SIZE;
+export const CONNECTION_TIMEOUT = DATABASE_CONFIG.CONNECTION_TIMEOUT;
+export const QUERY_TIMEOUT = DATABASE_CONFIG.QUERY_TIMEOUT;
+export const MAX_RETRIES = DATABASE_CONFIG.MAX_RETRIES;
