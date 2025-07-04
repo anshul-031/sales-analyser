@@ -6,7 +6,6 @@ import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target, Edit3, Save, Pl
 import { formatFileSize, isValidAudioFile } from '@/lib/utils';
 import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/gemini';
 import { MAX_FILE_SIZE, MAX_FILES, CHUNK_SIZE } from '@/lib/constants';
-import * as fflate from 'fflate';
 import { 
   audioCompressor, 
   COMPRESSION_PRESETS, 
@@ -100,6 +99,17 @@ export default function FileUpload({
     setAnalysisParameters(prev => prev.filter(param => param.id !== id));
   };
 
+  // Utility function to format file names for display
+  const formatFileName = (fileName: string, maxLength: number = 60) => {
+    if (fileName.length <= maxLength) return fileName;
+    
+    const extension = fileName.substring(fileName.lastIndexOf('.'));
+    const nameWithoutExtension = fileName.substring(0, fileName.lastIndexOf('.'));
+    const truncatedName = nameWithoutExtension.substring(0, maxLength - extension.length - 3) + '...';
+    
+    return truncatedName + extension;
+  };
+
   const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
     console.log('[FileUpload] Files dropped:', { accepted: acceptedFiles.length, rejected: rejectedFiles.length });
 
@@ -174,13 +184,20 @@ export default function FileUpload({
     onUploadsStart();
     setErrorMessages([]);
 
-    const uploadPromises = files
-      .filter(f => f.status === 'pending')
-      .map(f => uploadFile(f));
+    // Process files one by one to prevent memory issues
+    const filesToUpload = files.filter(f => f.status === 'pending');
+    const results = [];
 
-    console.log('[FileUpload] Waiting for all uploads to complete...');
-    const results = await Promise.all(uploadPromises);
-    console.log('[FileUpload] All upload promises resolved:', results.map(r => ({ success: r.success, uploadId: r.uploadId })));
+    for (const file of filesToUpload) {
+      console.log('[FileUpload] Processing file:', file.file.name);
+      const result = await uploadFile(file);
+      results.push(result);
+      
+      // Small delay between uploads to prevent overwhelming the system
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log('[FileUpload] All uploads completed:', results.map(r => ({ success: r.success, uploadId: r.uploadId })));
 
     setIsUploading(false);
 
@@ -295,25 +312,22 @@ export default function FileUpload({
             }
         }
 
-        // Step 2: Apply additional gzip compression
+        // Step 2: Start multipart upload (gzip compression removed)
         setFiles(prev => prev.map(f => f.id === uploadFile.id ? { 
             ...f, 
-            status: 'compressing',
+            status: 'uploading',
             progress: audioCompressionUsed ? 50 : 25
         } : f));
         
         const fileBuffer = await fileToUpload.arrayBuffer();
-        const compressedData = fflate.compressSync(new Uint8Array(fileBuffer), { level: 9 });
-        const compressionTime = Date.now() - startTime;
-
-        const finalCompressedFile = new File([compressedData], `${fileToUpload.name}.gz`, { type: 'application/gzip' });
+        const fileData = new Uint8Array(fileBuffer);
 
         setFiles(prev => prev.map(f => f.id === uploadFile.id ? {
             ...f,
-            compressedSize: finalCompressedFile.size,
-            compressionTime,
-            status: 'compressing',
-            progress: 75
+            compressedSize: audioCompressionUsed ? fileToUpload.size : undefined,
+            compressionTime: audioCompressionUsed ? (Date.now() - startTime) : undefined,
+            status: 'uploading',
+            progress: audioCompressionUsed ? 60 : 30
         } : f));
 
         // Step 3: Start multipart upload
@@ -322,8 +336,8 @@ export default function FileUpload({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'start-upload',
-                fileName: finalCompressedFile.name,
-                contentType: finalCompressedFile.type,
+                fileName: fileToUpload.name,
+                contentType: fileToUpload.type,
             }),
         });
 
@@ -333,7 +347,7 @@ export default function FileUpload({
         fileKey = startData.key;
 
         // Step 4: Get signed URLs for chunks
-        const numChunks = Math.ceil(compressedData.length / CHUNK_SIZE);
+        const numChunks = Math.ceil(fileData.length / CHUNK_SIZE);
         const urlsResponse = await fetch('/api/upload-large', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -353,7 +367,7 @@ export default function FileUpload({
         let uploadedSize = 0;
 
         for (let i = 0; i < numChunks; i++) {
-            const chunk = compressedData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            const chunk = fileData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
             const uploadResponse = await fetch(urlsData.urls[i], {
                 method: 'PUT',
                 body: chunk,
@@ -367,7 +381,7 @@ export default function FileUpload({
             });
 
             uploadedSize += chunk.length;
-            const progress = Math.round((uploadedSize / compressedData.length) * 100);
+            const progress = Math.round((uploadedSize / fileData.length) * 100);
             setFiles(prev => prev.map(f => f.id === uploadFile.id ? { ...f, status: 'uploading', progress } : f));
         }
 
@@ -381,9 +395,9 @@ export default function FileUpload({
                 key: fileKey,
                 uploadId,
                 parts: uploadedParts,
-                fileName: finalCompressedFile.name,
-                contentType: finalCompressedFile.type,
-                fileSize: finalCompressedFile.size,
+                fileName: fileToUpload.name,
+                contentType: fileToUpload.type,
+                fileSize: fileToUpload.size,
                 userId: userId,
                 customParameters: enabledParams,
                 originalContentType: uploadFile.file.type,
@@ -492,7 +506,7 @@ export default function FileUpload({
           <br />
           Max file size: {formatFileSize(maxFileSize)} | Max files: {maxFiles}
           <br />
-          {enableAudioCompression && <span className="text-purple-600">📦 Advanced audio compression enabled</span>}
+          {enableAudioCompression && <span className="text-purple-600">🎵 Audio compression enabled</span>}
         </p>
       </div>
 
@@ -529,33 +543,134 @@ export default function FileUpload({
           <h3 className="text-xl font-semibold text-gray-800 mb-4">Selected Files</h3>
           <ul className="space-y-4">
             {files.map(f => (
-              <li key={f.id} className="bg-gray-50 p-4 rounded-lg flex items-center justify-between space-x-4 shadow-sm">
-                <div className="flex items-center space-x-4 flex-grow">
-                  <FileAudio className="h-8 w-8 text-blue-500" />
-                  <div className="flex-grow">
-                    <p className="font-medium text-gray-800 truncate">{f.file.name}</p>
-                    <p className="text-sm text-gray-500">
-                      {formatFileSize(f.file.size)}
-                      {f.status === 'success' && f.uploadDuration && ` - Uploaded in ${f.uploadDuration.toFixed(1)}s`}
-                      {f.status === 'error' && f.error && <span className="text-red-500 ml-2">- {f.error}</span>}
-                    </p>
+              <li key={f.id} className="bg-gray-50 p-4 rounded-lg shadow-sm">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-3 lg:space-y-0 lg:space-x-4">
+                  <div className="flex items-start space-x-4 flex-grow min-w-0">
+                    <FileAudio className="h-8 w-8 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-grow min-w-0">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <p 
+                          className="font-medium text-gray-800 break-words"
+                          title={f.file.name}
+                        >
+                          {formatFileName(f.file.name)}
+                        </p>
+                        {f.file.name.length > 60 && (
+                          <span className="text-xs text-gray-400 bg-gray-200 px-2 py-1 rounded whitespace-nowrap">
+                            Full name in tooltip
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500 space-y-1">
+                        <p>
+                          Original: {formatFileSize(f.file.size)}
+                          {f.status === 'success' && f.uploadDuration && ` - Uploaded in ${f.uploadDuration.toFixed(1)}s`}
+                        </p>
+                        
+                        {/* Audio Compression Results */}
+                        {f.audioCompressionUsed && f.originalAudioSize && f.compressedSize && (
+                          <div className="bg-purple-50 p-2 rounded text-xs border border-purple-200">
+                            <div className="flex items-center space-x-1 text-purple-700">
+                              <Zap className="h-3 w-3" />
+                              <span className="font-medium">Audio Compression Applied</span>
+                            </div>
+                            <div className="mt-1 grid grid-cols-2 gap-2 text-purple-600">
+                              <span>Before: {formatFileSize(f.originalAudioSize)}</span>
+                              <span>After: {formatFileSize(f.compressedSize)}</span>
+                              <span>Saved: {formatFileSize(f.originalAudioSize - f.compressedSize)}</span>
+                              <span>Ratio: {f.compressionRatio ? ((1 - f.compressionRatio) * 100).toFixed(1) : 0}% smaller</span>
+                            </div>
+                            {f.compressionTime && (
+                              <div className="mt-1 text-purple-600">
+                                Processing time: {(f.compressionTime / 1000).toFixed(2)}s
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {f.status === 'error' && f.error && (
+                          <div className="text-red-500 break-words">
+                            <span className="font-medium">Error:</span> {f.error}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between lg:justify-end space-x-3 lg:space-x-4">
+                    <div className="flex-shrink-0 text-sm min-w-0">
+                      {renderFileStatus(f)}
+                    </div>
+                    <button 
+                      onClick={() => removeFile(f.id)} 
+                      className="text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                      disabled={isUploading}
+                      title="Remove file"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
-                <div className="w-48 text-sm">
-                  {renderFileStatus(f)}
-                </div>
-                <button 
-                  onClick={() => removeFile(f.id)} 
-                  className="text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isUploading}
-                >
-                  <X className="h-5 w-5" />
-                </button>
               </li>
             ))}
           </ul>
         </div>
       )}
+
+      {/* Audio Compression Settings */}
+      <div className="mt-8">
+        <h3 className="text-lg font-semibold text-gray-700 mb-4">
+          Audio Compression Settings
+        </h3>
+        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <Settings className="w-5 h-5 text-purple-600" />
+              <h3 className="font-semibold text-purple-800">Audio Compression</h3>
+            </div>
+            <div className="flex items-center space-x-2">
+              <label className="text-sm text-purple-700">Enable:</label>
+              <input
+                type="checkbox"
+                checked={enableAudioCompression}
+                onChange={(e) => setEnableAudioCompression(e.target.checked)}
+                className="w-4 h-4 text-purple-600 rounded focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+          
+          <p className="text-sm text-purple-700 mb-3">
+            Compress audio files to reduce upload time and storage space while maintaining quality.
+          </p>
+
+          {enableAudioCompression && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-purple-700 mb-2">
+                  Compression Level:
+                </label>
+                <select
+                  value={compressionSettings}
+                  onChange={(e) => setCompressionSettings(e.target.value as keyof typeof COMPRESSION_PRESETS)}
+                  className="w-full px-3 py-2 text-sm border border-purple-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                >
+                  <option value="FAST">Fast (Lower compression, faster processing)</option>
+                  <option value="BALANCED">Balanced (Good compression, moderate processing)</option>
+                  <option value="MAXIMUM">Maximum (Best compression, slower processing)</option>
+                </select>
+              </div>
+              
+              <div className="text-xs text-purple-600 bg-purple-100 p-2 rounded">
+                <div className="font-medium mb-1">Current Settings:</div>
+                <div>Bitrate: {COMPRESSION_PRESETS[compressionSettings].bitRate}kbps</div>
+                <div>Sample Rate: {COMPRESSION_PRESETS[compressionSettings].sampleRate}Hz</div>
+                <div>Channels: {COMPRESSION_PRESETS[compressionSettings].channels}</div>
+                <div>Format: {COMPRESSION_PRESETS[compressionSettings].outputFormat.toUpperCase()}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Analysis Parameters Section */}
       <div className="mt-8">

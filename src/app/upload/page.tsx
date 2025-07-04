@@ -25,7 +25,6 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
   const [filesUploading, setFilesUploading] = useState(false);
-  const [fileStatuses, setFileStatuses] = useState<Record<string, any>>({});
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -66,18 +65,11 @@ export default function UploadPage() {
 
   const handleUploadsStart = () => {
     setFilesUploading(true);
-    setFileStatuses({});
   };
 
   const handleFileUploadComplete = (result: { success: boolean; file: any; analysisId?: string }) => {
-    setFileStatuses(prev => ({
-      ...prev,
-      [result.file.id]: {
-        ...result.file,
-        status: result.success ? 'success' : 'error',
-        analysisId: result.analysisId,
-      }
-    }));
+    // File upload completion is now handled entirely by the FileUpload component
+    // We don't need to track individual file statuses here anymore
   };
 
   const handleAllUploadsComplete = (response: unknown) => {
@@ -279,28 +271,6 @@ export default function UploadPage() {
 
         {/* Step Content */}
         <div className="mb-8">
-          {/* Upload Status Display */}
-          {filesUploading && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h3 className="text-lg font-medium text-blue-800 mb-2">Upload Progress</h3>
-              <div className="space-y-2">
-                {Object.values(fileStatuses).map((file: any) => (
-                  <div key={file.id} className="flex items-center justify-between p-2 bg-white rounded border">
-                    <span className="text-sm font-medium text-gray-700">{file.file?.name || 'Unknown file'}</span>
-                    <span className={`text-sm px-2 py-1 rounded ${
-                      file.status === 'success' ? 'bg-green-100 text-green-800' :
-                      file.status === 'error' ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {file.status === 'success' ? (file.analysisTriggered ? 'Analysis Started' : 'Uploaded') : 
-                       file.status === 'error' ? 'Failed' : 'Processing...'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          
           {loading ? (
             <div className="flex justify-center items-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>

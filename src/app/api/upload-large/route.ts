@@ -92,6 +92,16 @@ async function getUploadUrls({ key, uploadId, parts }: { key: string, uploadId: 
 
 async function completeUpload(request: NextRequest, params: any, user: any) {
     const { key, uploadId, parts, fileName, contentType, fileSize, customParameters, originalContentType } = params;
+    
+    // Validate file size (200MB limit)
+    const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
+    if (fileSize > MAX_FILE_SIZE) {
+        return NextResponse.json({ 
+            success: false, 
+            error: `File size exceeds the 200MB limit. Current size: ${(fileSize / (1024 * 1024)).toFixed(2)}MB` 
+        }, { status: 400 });
+    }
+    
     const startTime = Date.now();
     try {
         await r2.send(
@@ -105,7 +115,7 @@ async function completeUpload(request: NextRequest, params: any, user: any) {
 
         const newUpload = await DatabaseStorage.createUpload({
             filename: fileName,
-            originalName: fileName.replace(/.gz$/, ''),
+            originalName: fileName,
             fileSize: fileSize,
             mimeType: originalContentType,
             fileUrl: key,

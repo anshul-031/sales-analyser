@@ -5,8 +5,8 @@
 
 // File Upload Configuration
 export const FILE_UPLOAD_CONFIG = {
-  // Maximum file size in bytes (5MB)
-  MAX_FILE_SIZE: 10 * 1024 * 1024 * 1024, // 10GB
+  // Maximum file size in bytes (200MB)
+  MAX_FILE_SIZE: 200 * 1024 * 1024, // 200MB
   
   // Maximum number of files per upload
   MAX_FILES: 10,

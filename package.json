@@ -38,7 +38,6 @@
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "fflate": "^0.8.2",
     "jsonwebtoken": "^9.0.2",
     "lamejs": "^1.2.1",
     "lucide-react": "^0.513.0",

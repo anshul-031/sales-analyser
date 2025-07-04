@@ -3,7 +3,6 @@ import { Logger } from '@/lib/utils';
 import { DatabaseStorage } from '@/lib/db';
 import { geminiService } from '@/lib/gemini';
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import * as fflate from 'fflate';
 import { getAuthenticatedUser } from '@/lib/auth';
 
 /**
@@ -268,11 +267,10 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
         throw new Error('File not found in R2');
     }
 
-    const compressedBuffer = Buffer.from(await Body.transformToByteArray());
-    const audioBuffer = Buffer.from(fflate.decompressSync(compressedBuffer));
+    const audioBuffer = Buffer.from(await Body.transformToByteArray());
     
     // Determine MIME type from file extension
-    const extension = upload.filename.toLowerCase().split('.').pop()?.replace(/.gz$/, '');
+    const extension = upload.filename.toLowerCase().split('.').pop();
     let mimeType = upload.mimeType;
     
     if (!mimeType) {
