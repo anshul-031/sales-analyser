@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   FileAudio,
   Trash2,
@@ -19,6 +19,8 @@ import { useRouter } from 'next/navigation';
 import { Logger } from '@/lib/utils';
 import AnalysisDisplay from '@/components/AnalysisDisplay';
 import Chatbot from '@/components/Chatbot';
+import { usePolling } from '@/lib/usePolling';
+import { useVisibility } from '@/lib/useVisibility';
 
 import type { 
   CallRecording, 
@@ -52,6 +54,91 @@ export default function CallHistoryPage() {
   const [loadedAnalysisIds, setLoadedAnalysisIds] = useState<Set<string>>(new Set());
   const [retryAttempts, setRetryAttempts] = useState<Map<string, number>>(new Map());
   const [failedAnalysisIds, setFailedAnalysisIds] = useState<Set<string>>(new Set());
+  
+  // Polling and visibility detection
+  const { isVisible, elementRef } = useVisibility();
+  const [lastPollingUpdate, setLastPollingUpdate] = useState<number>(0);
+  
+  // Memoize current analysis status to prevent unnecessary re-renders
+  const currentAnalysisStatus = useMemo(() => {
+    if (!selectedRecording?.analyses?.length) return null;
+    
+    const analysis = selectedRecording.analyses[0];
+    const isInProgress = analysis.status === 'processing' || 
+                        analysis.status === 'PROCESSING' || 
+                        analysis.status === 'pending' ||
+                        analysis.status === 'PENDING';
+    
+    return {
+      id: analysis.id,
+      isInProgress,
+      status: analysis.status,
+      recordingId: selectedRecording.id
+    };
+  }, [selectedRecording?.analyses, selectedRecording?.id]);
+  
+  // Optimized reload function to prevent excessive API calls
+  const reloadCallRecordings = useCallback(async () => {
+    if (!user || loading) return;
+    
+    // Prevent too frequent polling updates
+    const now = Date.now();
+    if (now - lastPollingUpdate < 5000) { // 5 second minimum interval
+      console.log('[CallHistory] Skipping reload - too frequent');
+      return;
+    }
+    
+    setLastPollingUpdate(now);
+    
+    try {
+      console.log('[CallHistory] Polling: Reloading call recordings...');
+      const response = await fetch('/api/upload?optimized=true');
+      const result = await response.json();
+      
+      if (result.success) {
+        const allFiles = result.uploads || [];
+        const audioFiles = allFiles.filter((file: any) => 
+          file.mimeType?.startsWith('audio/') || 
+          file.originalName?.match(/\.(mp3|wav|m4a|ogg|flac|aac)$/i)
+        );
+        
+        // Only update if there are actual changes to prevent re-renders
+        setCallRecordings(prev => {
+          const hasChanges = JSON.stringify(prev) !== JSON.stringify(audioFiles);
+          if (hasChanges) {
+            console.log('[CallHistory] Polling: Found changes, updating recordings');
+            
+            // Update selected recording if it exists in the new data
+            const updatedSelectedRecording = selectedRecording ? 
+              audioFiles.find((f: any) => f.id === selectedRecording.id) : null;
+            
+            if (updatedSelectedRecording) {
+              setSelectedRecording(updatedSelectedRecording);
+            }
+            
+            return audioFiles;
+          } else {
+            console.log('[CallHistory] Polling: No changes found');
+            return prev;
+          }
+        });
+      }
+    } catch (error) {
+      console.error('[CallHistory] Polling: Error reloading recordings:', error);
+    }
+  }, [user, loading, lastPollingUpdate, selectedRecording]);
+  
+  // Set up polling for analysis in progress
+  const { isPolling } = usePolling({
+    enabled: Boolean(currentAnalysisStatus?.isInProgress),
+    isVisible,
+    onPoll: reloadCallRecordings,
+    onStop: () => {
+      console.log('[CallHistory] Stopped polling for analysis status');
+    },
+    interval: 60000, // 1 minute
+    maxDuration: 30 * 60000 // 30 minutes
+  });
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -87,7 +174,7 @@ export default function CallHistoryPage() {
     console.log(`[CallHistory-TAB-${trackingId}] activeTab changed to:`, activeTab);
   }, [activeTab]);
 
-  const loadCallRecordings = async () => {
+  const loadCallRecordings = useCallback(async () => {
     if (!user) return;
     
     try {
@@ -111,7 +198,17 @@ export default function CallHistoryPage() {
         console.log('[CallHistory] Filtered audio files:', audioFiles.length);
         console.log('[CallHistory] Audio files data:', audioFiles);
         
-        setCallRecordings(audioFiles);
+        // Only update if there are actual changes to prevent re-renders
+        setCallRecordings(prev => {
+          const hasChanges = JSON.stringify(prev) !== JSON.stringify(audioFiles);
+          if (!hasChanges) {
+            console.log('[CallHistory] No changes detected, skipping update');
+            return prev;
+          }
+          
+          console.log('[CallHistory] Changes detected, updating recordings');
+          return audioFiles;
+        });
         
         // Initialize loaded analysis cache for recordings that already have data
         const alreadyLoadedIds = new Set<string>();
@@ -125,9 +222,15 @@ export default function CallHistoryPage() {
             });
           }
         });
-        setLoadedAnalysisIds(alreadyLoadedIds);
         
-        if (audioFiles.length > 0) {
+        setLoadedAnalysisIds(prev => {
+          const hasChanges = prev.size !== alreadyLoadedIds.size || 
+                           ![...prev].every(id => alreadyLoadedIds.has(id));
+          return hasChanges ? alreadyLoadedIds : prev;
+        });
+        
+        // Only set first recording as selected if no recording is currently selected
+        if (audioFiles.length > 0 && !selectedRecording) {
           const firstRecording = audioFiles[0];
           console.log('[CallHistory] Setting first recording as selected:', firstRecording);
           setSelectedRecording(firstRecording);
@@ -158,7 +261,7 @@ export default function CallHistoryPage() {
       setLoading(false);
       console.log('[CallHistory] Finished loading recordings');
     }
-  };
+  }, [user, selectedRecording]);
 
   const handleRecordingSelect = (recording: CallRecording) => {
     const selectionId = Math.random().toString(36).substr(2, 9);
@@ -218,7 +321,7 @@ export default function CallHistoryPage() {
   };
 
   // Function to load analysis data on-demand
-  const loadAnalysisData = async (analysisId: string, expectedRecordingId?: string) => {
+  const loadAnalysisData = useCallback(async (analysisId: string, expectedRecordingId?: string) => {
     if (!user || loadingAnalysisData) return;
     
     // If a specific recording ID is expected, check if selection has changed
@@ -361,7 +464,7 @@ export default function CallHistoryPage() {
     } finally {
       setLoadingAnalysisData(false);
     }
-  };
+  }, [user, loadingAnalysisData, failedAnalysisIds, retryAttempts, loadedAnalysisIds, selectedRecording]);
 
   const handleDelete = async (recordingId: string) => {
     if (!confirm('Are you sure you want to delete this recording and its analysis?')) return;
@@ -1326,23 +1429,28 @@ export default function CallHistoryPage() {
                       );
                     }
                     return (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                      <div 
+                        ref={elementRef}
+                        className="bg-blue-50 border border-blue-200 rounded-lg p-6"
+                      >
                         <div className="flex items-center text-blue-600 mb-2">
                           <Loader2 className="w-5 h-5 mr-2 animate-spin"/>
                           <h3 className="font-semibold">Analysis In Progress</h3>
                         </div>
-                        <p className="text-blue-700">
-                          Your call recording is being analyzed. This typically takes 5-10 minutes. Please check back later.
+                        <p className="text-blue-700 mb-2">
+                          Your call recording is being analyzed. This typically takes 5-10 minutes.
                         </p>
-                        <button 
-                          onClick={() => {
-                            console.log('[CallHistory] Refreshing recordings...');
-                            loadCallRecordings();
-                          }}
-                          className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        >
-                          Refresh Status
-                        </button>
+                        {isPolling && (
+                          <div className="text-blue-600 text-sm flex items-center gap-2">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                            Auto-refreshing status (polling active)
+                          </div>
+                        )}
+                        {!isVisible && currentAnalysisStatus?.isInProgress && (
+                          <div className="text-blue-600 text-sm mt-2">
+                            <span className="text-blue-500">ℹ️</span> Status updates paused - scroll to view this section to resume
+                          </div>
+                        )}
                       </div>
                     );
                   }

@@ -45,6 +45,18 @@ export const API_CONFIG = {
   },
 } as const;
 
+// Polling Configuration
+export const POLLING_CONFIG = {
+  // Interval for polling analysis status (1 minute)
+  ANALYSIS_STATUS_INTERVAL: 60 * 1000, // 1 minute in milliseconds
+  
+  // Maximum polling duration (30 minutes)
+  MAX_POLLING_DURATION: 30 * 60 * 1000, // 30 minutes in milliseconds
+  
+  // Debounce delay for visibility changes
+  VISIBILITY_DEBOUNCE_DELAY: 500, // 500ms
+} as const;
+
 // Export commonly used values for convenience
 export const MAX_FILE_SIZE = FILE_UPLOAD_CONFIG.MAX_FILE_SIZE;
 export const MAX_FILES = FILE_UPLOAD_CONFIG.MAX_FILES;
