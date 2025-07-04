@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "prisma generate && next build && npx prisma db push",
-    "build:db": "npm run db:generate && next build",
+    "build:watch": "nodemon --watch src --ext ts,tsx --exec \"npm run build && npm run dev\"",
     "start": "next start",
     "postinstall": "prisma generate",
     "lint": "next lint",
@@ -53,7 +53,8 @@
     "react-dropzone": "^14.3.8",
     "sonner": "^2.0.5",
     "swagger-jsdoc": "^6.2.8",
-    "tailwind-merge": "^3.3.0"
+    "tailwind-merge": "^3.3.0",
+    "wav-headers": "^1.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -64,6 +65,7 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",
+    "nodemon": "^3.1.10",
     "tailwindcss": "^4",
     "tsx": "^4.20.3",
     "typescript": "^5"
