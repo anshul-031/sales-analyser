@@ -343,15 +343,19 @@ If the original language is English, the "english_translation" field should be t
       const results: any = {};
       const enabledParameters = parameters.filter(p => p.enabled);
       
-      for (const parameter of enabledParameters) {
-        console.log(`[GeminiService] Analyzing: ${parameter.name}`);
-        
-        const prompt = `${parameter.prompt}
+      const customResults: any = {};
+      const customAllPrompts: string[] = [];
+      const customParameterIds: string[] = [];
 
+      for (const parameter of enabledParameters) {
+        customParameterIds.push(parameter.id);
+        const prompt = `---BEGIN_ANALYSIS_SECTION_${parameter.id.toUpperCase()}---
+${parameter.prompt}
+ 
 Sales Call Transcription:
 ${transcription}
-
-Please provide your analysis in the following JSON format:
+ 
+Please provide your analysis for "${parameter.name}" in the following JSON format:
 {
   "score": <number from 1-10>,
   "summary": "<brief summary>",
@@ -359,35 +363,67 @@ Please provide your analysis in the following JSON format:
   "improvements": ["<improvement 1>", "<improvement 2>"],
   "specific_examples": ["<example 1>", "<example 2>"],
   "recommendations": ["<recommendation 1>", "<recommendation 2>"]
-}`;
+}
+---END_ANALYSIS_SECTION_${parameter.id.toUpperCase()}---`;
+        customAllPrompts.push(prompt);
+      }
+ 
+      const customCombinedPrompt = customAllPrompts.join('\n\n');
+ 
+      const customCombinedAnalysisText = await this.makeAPICallWithRetry(async () => {
+        const model = this.getCurrentModel();
+        const result = await model.generateContent(customCombinedPrompt);
+        const response = await result.response;
+        return response.text();
+      });
+ 
+      for (const id of customParameterIds) {
+        const startTag = `---BEGIN_ANALYSIS_SECTION_${id.toUpperCase()}---`;
+        const endTag = `---END_ANALYSIS_SECTION_${id.toUpperCase()}---`;
+        const regex = new RegExp(`${startTag}[\\s\\S]*?(\\{[\\s\\S]*?\\})[\\s\\S]*?${endTag}`);
+        const match = customCombinedAnalysisText.match(regex);
+ 
+        if (match && match[1]) {
+          try {
+            // Try to clean and fix common JSON issues
+            let jsonStr = match[1].trim();
+            
+            // Fix common JSON formatting issues
+            jsonStr = jsonStr
+              .replace(/,\s*}/g, '}')  // Remove trailing commas before closing braces
+              .replace(/,\s*]/g, ']')  // Remove trailing commas before closing brackets
+              .replace(/\n/g, ' ')     // Replace newlines with spaces
+              .replace(/\r/g, ' ')     // Replace carriage returns with spaces
+              .replace(/\t/g, ' ')     // Replace tabs with spaces
+              .replace(/\s+/g, ' ');   // Replace multiple spaces with single space
 
-        const analysisText = await this.makeAPICallWithRetry(async () => {
-          const model = this.getCurrentModel();
-          const result = await model.generateContent(prompt);
-          const response = await result.response;
-          return response.text();
-        });
-        
-        try {
-          // Extract JSON from response
-          const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            results[parameter.id] = JSON.parse(jsonMatch[0]);
-          } else {
-            results[parameter.id] = {
-              score: 0,
-              summary: analysisText,
-              strengths: [],
-              improvements: [],
-              specific_examples: [],
-              recommendations: []
-            };
+            customResults[id] = JSON.parse(jsonStr);
+          } catch (parseError) {
+            console.error(`[GeminiService] JSON parse error for ${id} from combined response:`, parseError);
+            console.error(`[GeminiService] Raw JSON string that failed to parse:`, match[1]);
+            
+            // Try to extract individual fields using regex as fallback
+            try {
+              const fallbackResult = this.extractFieldsFromMalformedJson(match[1]);
+              customResults[id] = fallbackResult;
+              console.log(`[GeminiService] Successfully extracted data using fallback method for ${id}`);
+            } catch (fallbackError) {
+              console.error(`[GeminiService] Fallback extraction also failed for ${id}:`, fallbackError);
+              customResults[id] = {
+                score: 0,
+                summary: `Failed to parse JSON for ${id}. Parse error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
+                strengths: [],
+                improvements: [],
+                specific_examples: [],
+                recommendations: []
+              };
+            }
           }
-        } catch (parseError) {
-          console.error(`[GeminiService] JSON parse error for ${parameter.name}:`, parseError);
-          results[parameter.id] = {
+        } else {
+          console.warn(`[GeminiService] Could not find analysis for ${id} in combined response.`);
+          customResults[id] = {
             score: 0,
-            summary: analysisText,
+            summary: `No analysis found for ${id} in combined response.`,
             strengths: [],
             improvements: [],
             specific_examples: [],
@@ -397,16 +433,16 @@ Please provide your analysis in the following JSON format:
       }
       
       // Calculate overall score
-      const scores = Object.values(results).map((r: any) => r.score).filter(s => s > 0);
-      const overallScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+      const customScores = Object.values(customResults).map((r: any) => r.score).filter(s => s > 0);
+      const customOverallScore = customScores.length > 0 ? Math.round(customScores.reduce((a, b) => a + b, 0) / customScores.length) : 0;
       
       console.log('[GeminiService] Custom parameters analysis completed');
       
       return {
         type: 'parameters',
-        overallScore,
+        overallScore: customOverallScore,
         analysisDate: new Date().toISOString(),
-        parameters: results,
+        parameters: customResults,
         parameterNames: enabledParameters.reduce((acc, param) => {
           acc[param.id] = param.name;
           return acc;
@@ -426,16 +462,18 @@ Please provide your analysis in the following JSON format:
       console.log('[GeminiService] Starting default analysis');
       
       const results: any = {};
-      
+      const allPrompts: string[] = [];
+      const parameterKeys: string[] = [];
+
       for (const [key, parameter] of Object.entries(DEFAULT_ANALYSIS_PARAMETERS)) {
-        console.log(`[GeminiService] Analyzing: ${parameter.name}`);
-        
-        const prompt = `${parameter.prompt}
+        parameterKeys.push(key);
+        const prompt = `---BEGIN_ANALYSIS_SECTION_${key.toUpperCase()}---
+${parameter.prompt}
 
 Sales Call Transcription:
 ${transcription}
 
-Please provide your analysis in the following JSON format:
+Please provide your analysis for "${parameter.name}" in the following JSON format:
 {
   "score": <number from 1-10>,
   "summary": "<brief summary>",
@@ -443,35 +481,67 @@ Please provide your analysis in the following JSON format:
   "improvements": ["<improvement 1>", "<improvement 2>"],
   "specific_examples": ["<example 1>", "<example 2>"],
   "recommendations": ["<recommendation 1>", "<recommendation 2>"]
-}`;
+}
+---END_ANALYSIS_SECTION_${key.toUpperCase()}---`;
+        allPrompts.push(prompt);
+      }
 
-        const analysisText = await this.makeAPICallWithRetry(async () => {
-          const model = this.getCurrentModel();
-          const result = await model.generateContent(prompt);
-          const response = await result.response;
-          return response.text();
-        });
-        
-        try {
-          // Extract JSON from response
-          const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            results[key] = JSON.parse(jsonMatch[0]);
-          } else {
-            results[key] = {
-              score: 0,
-              summary: analysisText,
-              strengths: [],
-              improvements: [],
-              specific_examples: [],
-              recommendations: []
-            };
+      const combinedPrompt = allPrompts.join('\n\n');
+
+      const combinedAnalysisText = await this.makeAPICallWithRetry(async () => {
+        const model = this.getCurrentModel();
+        const result = await model.generateContent(combinedPrompt);
+        const response = await result.response;
+        return response.text();
+      });
+
+      for (const key of parameterKeys) {
+        const startTag = `---BEGIN_ANALYSIS_SECTION_${key.toUpperCase()}---`;
+        const endTag = `---END_ANALYSIS_SECTION_${key.toUpperCase()}---`;
+        const regex = new RegExp(`${startTag}[\\s\\S]*?(\\{[\\s\\S]*?\\})[\\s\\S]*?${endTag}`);
+        const match = combinedAnalysisText.match(regex);
+
+        if (match && match[1]) {
+          try {
+            // Try to clean and fix common JSON issues
+            let jsonStr = match[1].trim();
+            
+            // Fix common JSON formatting issues
+            jsonStr = jsonStr
+              .replace(/,\s*}/g, '}')  // Remove trailing commas before closing braces
+              .replace(/,\s*]/g, ']')  // Remove trailing commas before closing brackets
+              .replace(/\n/g, ' ')     // Replace newlines with spaces
+              .replace(/\r/g, ' ')     // Replace carriage returns with spaces
+              .replace(/\t/g, ' ')     // Replace tabs with spaces
+              .replace(/\s+/g, ' ');   // Replace multiple spaces with single space
+
+            results[key] = JSON.parse(jsonStr);
+          } catch (parseError) {
+            console.error(`[GeminiService] JSON parse error for ${key} from combined response:`, parseError);
+            console.error(`[GeminiService] Raw JSON string that failed to parse:`, match[1]);
+            
+            // Try to extract individual fields using regex as fallback
+            try {
+              const fallbackResult = this.extractFieldsFromMalformedJson(match[1]);
+              results[key] = fallbackResult;
+              console.log(`[GeminiService] Successfully extracted data using fallback method for ${key}`);
+            } catch (fallbackError) {
+              console.error(`[GeminiService] Fallback extraction also failed for ${key}:`, fallbackError);
+              results[key] = {
+                score: 0,
+                summary: `Failed to parse JSON for ${key}. Parse error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
+                strengths: [],
+                improvements: [],
+                specific_examples: [],
+                recommendations: []
+              };
+            }
           }
-        } catch (parseError) {
-          console.error(`[GeminiService] JSON parse error for ${key}:`, parseError);
+        } else {
+          console.warn(`[GeminiService] Could not find analysis for ${key} in combined response.`);
           results[key] = {
             score: 0,
-            summary: analysisText,
+            summary: `No analysis found for ${key} in combined response.`,
             strengths: [],
             improvements: [],
             specific_examples: [],
@@ -481,14 +551,14 @@ Please provide your analysis in the following JSON format:
       }
       
       // Calculate overall score
-      const scores = Object.values(results).map((r: any) => r.score).filter(s => s > 0);
-      const overallScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+      const defaultScores = Object.values(results).map((r: any) => r.score).filter(s => s > 0);
+      const defaultOverallScore = defaultScores.length > 0 ? Math.round(defaultScores.reduce((a, b) => a + b, 0) / defaultScores.length) : 0;
       
       console.log('[GeminiService] Default analysis completed');
       
       return {
         type: 'default',
-        overallScore,
+        overallScore: defaultOverallScore,
         analysisDate: new Date().toISOString(),
         parameters: results
       };
@@ -534,7 +604,19 @@ Please provide a comprehensive analysis based on the instructions above. Format 
         // Extract JSON from response
         const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          analysisResult = JSON.parse(jsonMatch[0]);
+          // Try to clean and fix common JSON issues
+          let jsonStr = jsonMatch[0].trim();
+          
+          // Fix common JSON formatting issues
+          jsonStr = jsonStr
+            .replace(/,\s*}/g, '}')  // Remove trailing commas before closing braces
+            .replace(/,\s*]/g, ']')  // Remove trailing commas before closing brackets
+            .replace(/\n/g, ' ')     // Replace newlines with spaces
+            .replace(/\r/g, ' ')     // Replace carriage returns with spaces
+            .replace(/\t/g, ' ')     // Replace tabs with spaces
+            .replace(/\s+/g, ' ');   // Replace multiple spaces with single space
+
+          analysisResult = JSON.parse(jsonStr);
         } else {
           analysisResult = {
             summary: analysisText,
@@ -546,6 +628,7 @@ Please provide a comprehensive analysis based on the instructions above. Format 
         }
       } catch (parseError) {
         console.error('[GeminiService] Custom analysis JSON parse error:', parseError);
+        console.error('[GeminiService] Raw JSON string that failed to parse:', analysisText);
         analysisResult = {
           summary: analysisText,
           key_findings: [],
@@ -610,6 +693,56 @@ Please provide a comprehensive analysis based on the instructions above. Format 
       }
       
       throw new Error(`Chatbot response failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Fallback method to extract fields from malformed JSON using regex
+   */
+  private extractFieldsFromMalformedJson(jsonStr: string): any {
+    const result: any = {
+      score: 0,
+      summary: '',
+      strengths: [],
+      improvements: [],
+      specific_examples: [],
+      recommendations: []
+    };
+
+    try {
+      // Extract score
+      const scoreMatch = jsonStr.match(/"score"\s*:\s*(\d+)/);
+      if (scoreMatch) {
+        result.score = parseInt(scoreMatch[1]);
+      }
+
+      // Extract summary
+      const summaryMatch = jsonStr.match(/"summary"\s*:\s*"([^"]+)"/);
+      if (summaryMatch) {
+        result.summary = summaryMatch[1];
+      }
+
+      // Extract arrays using regex
+      const extractArray = (fieldName: string): string[] => {
+        const arrayMatch = jsonStr.match(new RegExp(`"${fieldName}"\\s*:\\s*\\[([^\\]]+)\\]`));
+        if (arrayMatch) {
+          return arrayMatch[1]
+            .split(',')
+            .map(item => item.trim().replace(/^"|"$/g, ''))
+            .filter(item => item.length > 0);
+        }
+        return [];
+      };
+
+      result.strengths = extractArray('strengths');
+      result.improvements = extractArray('improvements');
+      result.specific_examples = extractArray('specific_examples');
+      result.recommendations = extractArray('recommendations');
+
+      return result;
+    } catch (error) {
+      console.error('[GeminiService] Error in fallback extraction:', error);
+      throw error;
     }
   }
 }

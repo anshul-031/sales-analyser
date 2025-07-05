@@ -25,6 +25,7 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
   const [filesUploading, setFilesUploading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -69,12 +70,16 @@ export default function UploadPage() {
 
   const handleFileUploadComplete = (result: { success: boolean; file: any; analysisId?: string }) => {
     // File upload completion is now handled entirely by the FileUpload component
-    // We don't need to track individual file statuses here anymore
+    // We don't need to track individual file statuses here anymore to prevent unnecessary re-renders
+    // The FileUpload component manages its own state and calls handleAllUploadsComplete when done
   };
 
   const handleAllUploadsComplete = (response: unknown) => {
     console.log('[UploadPage] === UPLOADS COMPLETE CALLBACK ===');
     console.log('[UploadPage] Response received:', JSON.stringify(response, null, 2));
+    console.log('[UploadPage] Response type:', typeof response);
+    console.log('[UploadPage] User authenticated:', !!user);
+    console.log('[UploadPage] Router available:', !!router);
     
     setFilesUploading(false);
     Logger.info('[UploadPage] All uploads completed:', response);
@@ -82,32 +87,101 @@ export default function UploadPage() {
     const uploadResponse = response as {
       analysisStarted?: boolean;
       analyses?: Array<{ id: string }>;
+      error?: string;
+      redirectAnyway?: boolean;
     };
 
     console.log('[UploadPage] Parsed response - analysisStarted:', uploadResponse.analysisStarted);
     console.log('[UploadPage] Parsed response - analyses:', uploadResponse.analyses);
+    console.log('[UploadPage] Analyses is array:', Array.isArray(uploadResponse.analyses));
+    console.log('[UploadPage] Analyses length:', uploadResponse.analyses?.length);
 
-    if (uploadResponse.analysisStarted && uploadResponse.analyses) {
-      const newAnalysisIds = uploadResponse.analyses.map((a) => a.id);
+    // More robust condition checking
+    const shouldRedirect = (uploadResponse.analysisStarted === true && 
+                           Array.isArray(uploadResponse.analyses) &&
+                           uploadResponse.analyses.length > 0) ||
+                          uploadResponse.redirectAnyway === true;
+    
+    console.log('[UploadPage] Should redirect:', shouldRedirect);
+    console.log('[UploadPage] Redirect anyway flag:', uploadResponse.redirectAnyway);
+
+    if (shouldRedirect) {
+      const newAnalysisIds = (uploadResponse.analyses || []).map((a) => a.id).filter(id => id);
       console.log('[UploadPage] Analysis IDs extracted:', newAnalysisIds);
       
-      Logger.info('[UploadPage] Auto-analysis started, redirecting to history with', newAnalysisIds.length, 'analyses');
-      setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
-      
-      console.log('[UploadPage] Showing toast notification...');
-      toast.info("Analysis has started and can take 5-10 minutes. You will be redirected to the call history page where you can see the progress.");
+      if (uploadResponse.analysisStarted) {
+        Logger.info('[UploadPage] Auto-analysis started, redirecting to history with', newAnalysisIds.length, 'analyses');
+        setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
+        
+        console.log('[UploadPage] Showing success toast notification...');
+        toast.success("Analysis started! Redirecting to call history page...", {
+          duration: 2500,
+        });
+      } else {
+        Logger.info('[UploadPage] Files uploaded but analysis failed, redirecting to history anyway');
+        
+        console.log('[UploadPage] Showing error toast notification...');
+        const errorMsg = uploadResponse.error || 'Analysis failed to start';
+        toast.error(`Files uploaded successfully, but ${errorMsg}. Redirecting to call history...`, {
+          duration: 2500,
+        });
+      }
       
       console.log('[UploadPage] Setting timeout for redirection...');
+      
+      // Use a consistent shorter delay for better UX
+      const redirectDelay = 1500; // 1.5 seconds - enough time to see the toast
+      console.log('[UploadPage] Redirect delay set to:', redirectDelay, 'ms');
+      
+      // Show loading state during redirection
+      setIsRedirecting(true);
+      
       setTimeout(() => {
-        console.log('[UploadPage] REDIRECTING TO CALL HISTORY PAGE');
-        router.push('/call-history');
-      }, 3000); // Delay for toast visibility
+        console.log('[UploadPage] EXECUTING REDIRECTION TO CALL HISTORY');
+        console.log('[UploadPage] Current location:', window.location.href);
+        console.log('[UploadPage] Router object available:', !!router);
+        console.log('[UploadPage] User still authenticated:', !!user);
+        
+        try {
+          console.log('[UploadPage] Attempting router.push("/call-history")...');
+          router.push('/call-history');
+          console.log('[UploadPage] ✅ Router.push() executed successfully');
+          
+          // Add a small delay to verify the navigation worked
+          setTimeout(() => {
+            console.log('[UploadPage] Post-redirect location check:', window.location.href);
+            if (!window.location.href.includes('/call-history')) {
+              console.warn('[UploadPage] Router navigation may have failed, using fallback...');
+              window.location.href = '/call-history';
+            }
+            setIsRedirecting(false); // Reset state in case navigation failed
+          }, 100);
+          
+        } catch (error) {
+          console.error('[UploadPage] ❌ Router.push() failed:', error);
+          console.log('[UploadPage] Attempting fallback redirection using window.location...');
+          try {
+            window.location.href = '/call-history';
+            console.log('[UploadPage] ✅ Fallback redirection executed');
+          } catch (fallbackError) {
+            console.error('[UploadPage] ❌ Fallback redirection also failed:', fallbackError);
+            setIsRedirecting(false); // Reset state if all fails
+          }
+        }
+      }, redirectDelay);
     } else {
-      console.log('[UploadPage] NOT redirecting - analysisStarted:', uploadResponse.analysisStarted, 'analyses:', uploadResponse.analyses);
+      console.log('[UploadPage] NOT redirecting - Reasons:');
+      console.log('[UploadPage] - analysisStarted:', uploadResponse.analysisStarted, '(should be true)');
+      console.log('[UploadPage] - analyses is array:', Array.isArray(uploadResponse.analyses), '(should be true)');
+      console.log('[UploadPage] - analyses length:', uploadResponse.analyses?.length, '(should be > 0)');
+      console.log('[UploadPage] - analyses value:', uploadResponse.analyses);
+      console.log('[UploadPage] - redirectAnyway:', uploadResponse.redirectAnyway, '(fallback flag)');
+      console.log('[UploadPage] - error:', uploadResponse.error);
     }
     
-    console.log('[UploadPage] Reloading uploaded files...');
-    loadUploadedFiles();
+    // No need to reload files here - optimization to prevent unnecessary re-renders
+    // The FileUpload component handles the file state updates internally
+    console.log('[UploadPage] Skipping file reload to prevent unnecessary re-renders');
   };
 
   const getStepStatus = (step: AppStep) => {
@@ -159,14 +233,48 @@ export default function UploadPage() {
     switch (currentStep) {
       case AppStep.UPLOAD:
         return (
-          <FileUpload
-            onUploadsStart={handleUploadsStart}
-            onUploadComplete={handleFileUploadComplete}
-            onUploadsComplete={handleAllUploadsComplete}
-            userId={user?.id || ''}
-            maxFiles={MAX_FILES}
-            maxFileSize={MAX_FILE_SIZE}
-          />
+          <div>
+            <FileUpload
+              onUploadsStart={handleUploadsStart}
+              onUploadComplete={handleFileUploadComplete}
+              onUploadsComplete={handleAllUploadsComplete}
+              userId={user?.id || ''}
+              maxFiles={MAX_FILES}
+              maxFileSize={MAX_FILE_SIZE}
+            />
+            
+            {/* Manual redirect button for testing/fallback */}
+            {uploadedFiles.length > 0 && !isRedirecting && (
+              <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-blue-900">Files Uploaded Successfully</h3>
+                    <p className="text-sm text-blue-700">
+                      {uploadedFiles.length} file(s) uploaded. You can view them in your call history.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      console.log('[UploadPage] Manual redirect button clicked');
+                      setIsRedirecting(true);
+                      toast.success("Redirecting to call history...");
+                      setTimeout(() => {
+                        try {
+                          router.push('/call-history');
+                        } catch (error) {
+                          window.location.href = '/call-history';
+                        }
+                      }, 500);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2"
+                  >
+                    <FileText className="w-4 h-4" />
+                    View Call History
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         );
       
       case AppStep.RESULTS:
@@ -280,6 +388,17 @@ export default function UploadPage() {
             renderStepContent()
           )}
         </div>
+
+        {/* Redirection Overlay */}
+        {isRedirecting && (
+          <div className="fixed inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
+            <div className="text-center p-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Redirecting to Call History</h3>
+              <p className="text-gray-600">Please wait while we take you to your uploaded files...</p>
+            </div>
+          </div>
+        )}
 
         {/* Chatbot Toggle Button */}
         {shouldShowChatbot() && !showChatbot && (

@@ -19,6 +19,12 @@ export default function AnalysisConfig({ uploadedFiles, userId, onAnalysisStart 
   const [expandedParameter, setExpandedParameter] = useState<string | null>(null);
 
   const handleFileSelection = (fileId: string) => {
+    // Only handle valid file IDs
+    if (!fileId || typeof fileId !== 'string' || fileId.trim().length === 0) {
+      console.warn('[AnalysisConfig] Invalid file ID:', fileId);
+      return;
+    }
+    
     setSelectedFiles(prev => 
       prev.includes(fileId) 
         ? prev.filter(id => id !== fileId)
@@ -27,7 +33,7 @@ export default function AnalysisConfig({ uploadedFiles, userId, onAnalysisStart 
   };
 
   const selectAllFiles = () => {
-    setSelectedFiles(uploadedFiles.map(file => file.id));
+    setSelectedFiles(uploadedFiles.map(file => file.id).filter(id => id && typeof id === 'string'));
   };
 
   const deselectAllFiles = () => {
@@ -37,7 +43,10 @@ export default function AnalysisConfig({ uploadedFiles, userId, onAnalysisStart 
   const startAnalysis = async () => {
     console.log('[AnalysisConfig] Starting analysis process');
     
-    if (selectedFiles.length === 0) {
+    // Filter out any null or invalid IDs from selectedFiles
+    const validSelectedFiles = selectedFiles.filter(id => id && typeof id === 'string' && id.trim().length > 0);
+    
+    if (validSelectedFiles.length === 0) {
       setError('Please select at least one file to analyze');
       return;
     }
@@ -52,7 +61,7 @@ export default function AnalysisConfig({ uploadedFiles, userId, onAnalysisStart 
 
     try {
       const requestBody = {
-        uploadIds: selectedFiles,
+        uploadIds: validSelectedFiles,
         analysisType,
         customPrompt: analysisType === 'custom' ? customPrompt : undefined
       };

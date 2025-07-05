@@ -166,6 +166,11 @@ export class EnhancedDatabaseStorage {
    * Enhanced getUploadById with timeout and retry handling
    */
   static async getUploadById(id: string) {
+    // Validate the ID parameter
+    if (!id || typeof id !== 'string' || id.trim().length === 0) {
+      throw new Error(`Invalid upload ID: ${id}. ID must be a non-empty string.`);
+    }
+
     return safeDbOperation(async () => {
       const upload = await prisma.upload.findUnique({
         where: { id },

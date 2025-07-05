@@ -85,6 +85,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // Filter out null, undefined, and empty string values from uploadIds
+    const validUploadIds = uploadIds.filter(id => id && typeof id === 'string' && id.trim().length > 0);
+    
+    if (validUploadIds.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'No valid upload IDs provided'
+      }, { status: 400 });
+    }
+
+    if (validUploadIds.length !== uploadIds.length) {
+      Logger.warn('[Analyze API] Filtered out invalid upload IDs:', uploadIds.length - validUploadIds.length, 'invalid IDs');
+    }
+
     if (analysisType !== 'default' && analysisType !== 'custom' && analysisType !== 'parameters') {
       return NextResponse.json({
         success: false,
@@ -106,15 +120,22 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    Logger.info('[Analyze API] Processing', uploadIds.length, 'files for analysis');
+    Logger.info('[Analyze API] Processing', validUploadIds.length, 'files for analysis');
 
     const analyses = [];
     let successCount = 0;
     let failedCount = 0;
 
-    for (const uploadId of uploadIds) {
+    for (const uploadId of validUploadIds) {
       try {
         Logger.info('[Analyze API] Processing upload:', uploadId);
+
+        // Additional validation for upload ID
+        if (!uploadId || typeof uploadId !== 'string' || uploadId.trim().length === 0) {
+          Logger.error('[Analyze API] Invalid upload ID:', uploadId);
+          failedCount++;
+          continue;
+        }
 
         // Get upload from database using enhanced storage
         const upload = await EnhancedDatabaseStorage.getUploadById(uploadId);
@@ -173,7 +194,7 @@ export async function POST(request: NextRequest) {
       message: `Analysis started for ${successCount} files`,
       analyses: serializeAnalyses(analyses),
       summary: {
-        total: uploadIds.length,
+        total: validUploadIds.length,
         successful: successCount,
         failed: failedCount
       }

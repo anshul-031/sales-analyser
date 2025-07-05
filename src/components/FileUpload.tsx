@@ -197,23 +197,49 @@ export default function FileUpload({
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    console.log('[FileUpload] All uploads completed:', results.map(r => ({ success: r.success, uploadId: r.uploadId })));
+    console.log('[FileUpload] All uploads completed:', results.map(r => ({ success: r.success, uploadId: r.uploadId, error: r.error })));
 
     setIsUploading(false);
 
-    const successfulUploads = results.filter(r => r.success);
-    console.log('[FileUpload] Successful uploads:', successfulUploads.length, 'out of', results.length);
+    // Add detailed logging for filtering logic
+    console.log('[FileUpload] Filtering results for successful uploads with valid IDs...');
+    results.forEach((result, index) => {
+      console.log(`[FileUpload] Result ${index}:`, {
+        success: result.success,
+        uploadId: result.uploadId,
+        hasUploadId: !!result.uploadId,
+        uploadIdType: typeof result.uploadId,
+        uploadIdValue: result.uploadId
+      });
+    });
+
+    const successfulUploads = results.filter(r => r.success && r.uploadId);
+    console.log('[FileUpload] Successful uploads with valid IDs:', successfulUploads.length, 'out of', results.length);
+    console.log('[FileUpload] Successful uploads details:', successfulUploads.map(r => ({ uploadId: r.uploadId, analysisId: r.analysisId })));
 
     if (successfulUploads.length > 0) {
       // Automatically start analysis for all successful uploads
       try {
-        const fileIds = successfulUploads.map(r => r.uploadId);
+        const fileIds = successfulUploads
+          .map(r => r.uploadId)
+          .filter(id => id && typeof id === 'string' && id.trim().length > 0);
         const enabledParameters = analysisParameters.filter(p => p.enabled);
 
         console.log('[FileUpload] === STARTING ANALYSIS ===');
         console.log('[FileUpload] File IDs for analysis:', fileIds);
         console.log('[FileUpload] Enabled parameters:', enabledParameters.length);
+        console.log('[FileUpload] User ID:', userId);
 
+        if (fileIds.length === 0) {
+          console.error('[FileUpload] No valid upload IDs found for analysis');
+          setFiles(prev => prev.map(f => 
+            ({ ...f, status: 'error', error: 'No valid upload IDs for analysis' })
+          ));
+          onUploadsComplete({ analysisStarted: false });
+          return;
+        }
+
+        console.log('[FileUpload] Making request to /api/analysis...');
         const response = await fetch('/api/analysis', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -225,11 +251,19 @@ export default function FileUpload({
         });
 
         console.log('[FileUpload] Analysis API response status:', response.status);
+        console.log('[FileUpload] Analysis API response ok:', response.ok);
+        
         const analysisResult = await response.json();
         console.log('[FileUpload] Analysis API response:', JSON.stringify(analysisResult, null, 2));
 
         if (analysisResult.success) {
           console.log('[FileUpload] Analysis started successfully:', analysisResult.analyses);
+          console.log('[FileUpload] Analysis result details:', JSON.stringify(analysisResult, null, 2));
+          console.log('[FileUpload] Analysis result success:', analysisResult.success);
+          console.log('[FileUpload] Analysis result analyses:', analysisResult.analyses);
+          console.log('[FileUpload] Analysis result analyses length:', analysisResult.analyses?.length);
+          console.log('[FileUpload] Analysis result analyses is array:', Array.isArray(analysisResult.analyses));
+          
           setFiles(prev => prev.map(f => 
             fileIds.includes(f.uploadId) ? { ...f, status: 'success', analysisTriggered: true } : f
           ));
@@ -242,11 +276,29 @@ export default function FileUpload({
           onUploadsComplete(callbackData);
         } else {
           console.error('[FileUpload] Analysis failed:', analysisResult.error);
-          setErrorMessages(prev => [...prev, `Analysis failed: ${analysisResult.error}`]);
-          onUploadsComplete({ analysisStarted: false });
+          console.log('[FileUpload] Analysis result full response:', JSON.stringify(analysisResult, null, 2));
+          console.log('[FileUpload] Analysis API returned success=false');
+          
+          // Show user-friendly error message
+          const errorMessage = analysisResult.error || 'Failed to start analysis';
+          setErrorMessages(prev => [...prev, `Analysis failed: ${errorMessage}`]);
+          
+          // Even if analysis fails, still redirect to call history so user can see their uploads
+          // This ensures the user doesn't get stuck on the upload page
+          console.log('[FileUpload] Redirecting to call history despite analysis failure');
+          
+          const callbackData = { 
+            analysisStarted: false, 
+            analyses: [],
+            error: errorMessage,
+            redirectAnyway: true // Flag to indicate we should redirect anyway
+          };
+          
+          onUploadsComplete(callbackData);
         }
       } catch (error) {
         console.error('[FileUpload] Error starting analysis:', error);
+        console.log('[FileUpload] Exception details:', error);
         setErrorMessages(prev => [...prev, 'An error occurred while starting the analysis.']);
         onUploadsComplete({ analysisStarted: false });
       }
@@ -411,19 +463,33 @@ export default function FileUpload({
 
         if (completeResult.success) {
           const uploadDuration = (Date.now() - startTime) / 1000;
+          
+          // Extract upload ID from results array (API returns results[0].uploadId)
+          const uploadId = completeResult.results?.[0]?.uploadId || completeResult.uploadId;
+          const analysisId = completeResult.analyses?.[0]?.id || completeResult.analysisId;
+          
+          console.log('[FileUpload] Complete result structure:', {
+            hasResults: !!completeResult.results,
+            resultCount: completeResult.results?.length || 0,
+            firstResultUploadId: completeResult.results?.[0]?.uploadId,
+            directUploadId: completeResult.uploadId,
+            extractedUploadId: uploadId,
+            analysisId: analysisId
+          });
+          
           const updatedFile = { 
             ...uploadFile, 
             status: 'success' as const, 
             progress: 100,
             uploadDuration,
-            uploadId: completeResult.uploadId,
-            analysisId: completeResult.analysisId,
-            analysisTriggered: !!completeResult.analysisId,
+            uploadId: uploadId,
+            analysisId: analysisId,
+            analysisTriggered: !!analysisId,
           };
           setFiles(prev => prev.map(f => f.id === uploadFile.id ? updatedFile : f));
-          onUploadComplete({ success: true, file: updatedFile, analysisId: completeResult.analysisId });
-          console.log('[FileUpload] File upload success:', uploadFile.id);
-          return { success: true, uploadId: completeResult.uploadId, analysisId: completeResult.analysisId };
+          onUploadComplete({ success: true, file: updatedFile, analysisId: analysisId });
+          console.log('[FileUpload] File upload success:', uploadFile.id, 'with uploadId:', uploadId);
+          return { success: true, uploadId: uploadId, analysisId: analysisId };
         } else {
           throw new Error(completeResult.error || 'Failed to complete upload');
         }

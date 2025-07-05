@@ -89,6 +89,8 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
+    console.log('[Analysis API] User authenticated:', user.id);
+
     const body = await request.json();
     console.log('[Analysis API] Request body:', JSON.stringify(body, null, 2));
     
@@ -133,6 +135,28 @@ export async function POST(request: NextRequest) {
     console.log('[Analysis API] User ID:', userId);
     console.log('[Analysis API] Parameters count:', parameters.length);
 
+    // Filter out null, undefined, and empty string values from fileIds
+    const validFileIds = fileIds.filter(id => id && typeof id === 'string' && id.trim().length > 0);
+    
+    if (validFileIds.length === 0) {
+      console.log('[Analysis API] No valid file IDs after filtering:', fileIds);
+      return NextResponse.json({
+        success: false,
+        error: 'No valid file IDs provided'
+      }, { status: 400 });
+    }
+
+    if (validFileIds.length !== fileIds.length) {
+      console.log('[Analysis API] Filtered out invalid file IDs:', fileIds.length - validFileIds.length, 'invalid IDs');
+    }
+
+    console.log('[Analysis API] Valid file IDs:', validFileIds);
+    console.log('[Analysis API] Calling /api/analyze with parameters:', {
+      uploadIds: validFileIds,
+      analysisType: 'parameters',
+      customParameters: parameters
+    });
+
     // Call the analyze API endpoint with the appropriate format
     const analyzeResponse = await fetch(`${request.nextUrl.origin}/api/analyze`, {
       method: 'POST',
@@ -142,17 +166,21 @@ export async function POST(request: NextRequest) {
         'Cookie': request.headers.get('Cookie') || '',
       },
       body: JSON.stringify({
-        uploadIds: fileIds,
+        uploadIds: validFileIds,
         analysisType: 'parameters',
         customParameters: parameters
       }),
     });
 
+    console.log('[Analysis API] Analyze API response status:', analyzeResponse.status);
+    console.log('[Analysis API] Analyze API response ok:', analyzeResponse.ok);
+    
     const analyzeResult = await analyzeResponse.json();
     console.log('[Analysis API] Analyze API response:', JSON.stringify(analyzeResult, null, 2));
 
     if (!analyzeResult.success) {
       console.error('[Analysis API] Analyze API failed:', analyzeResult.error);
+      console.log('[Analysis API] Analyze API error details:', analyzeResult.details);
       return NextResponse.json({
         success: false,
         error: analyzeResult.error || 'Failed to start analysis'

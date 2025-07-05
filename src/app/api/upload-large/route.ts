@@ -127,6 +127,15 @@ async function completeUpload(request: NextRequest, params: any, user: any) {
         const protocol = request.headers.get('x-forwarded-proto') || (host?.includes('localhost') ? 'http' : 'https');
         const baseUrl = `${protocol}://${host}`;
 
+        // Validate the upload ID before sending to analyze API
+        if (!newUpload.id || typeof newUpload.id !== 'string') {
+            Logger.error('[Upload Large API] Invalid upload ID:', newUpload.id);
+            return NextResponse.json({
+                success: false,
+                error: 'Upload created but analysis could not be started due to invalid upload ID'
+            }, { status: 500 });
+        }
+
         const analysisPayload = {
             uploadIds: [newUpload.id],
             analysisType: 'parameters',

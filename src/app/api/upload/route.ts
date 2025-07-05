@@ -207,8 +207,10 @@ export async function POST(request: NextRequest) {
       Logger.info('[Upload API] Auto-starting analysis for uploaded files');
       
       try {
-        // Get upload IDs from successful uploads
-        const uploadIds = results.filter(r => r.success).map(r => r.id);
+        // Get upload IDs from successful uploads and validate they are non-null
+        const uploadIds = results
+          .filter(r => r.success && r.id && typeof r.id === 'string')
+          .map(r => r.id);
         
         // Call analyze API to start automatic analysis
         // Dynamically detect base URL from request headers
