@@ -20,6 +20,8 @@
     "db:debug": "tsx src/lib/debug-db.ts"
   },
   "dependencies": {
+    "@apollo/server": "^4.12.2",
+    "@as-integrations/next": "^3.2.0",
     "@aws-sdk/client-s3": "^3.839.0",
     "@aws-sdk/s3-request-presigner": "^3.839.0",
     "@breezystack/lamejs": "^1.2.7",
@@ -38,6 +40,8 @@
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "graphql": "^16.11.0",
+    "graphql-tag": "^2.12.6",
     "jsonwebtoken": "^9.0.2",
     "lamejs": "^1.2.1",
     "lucide-react": "^0.513.0",

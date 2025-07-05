@@ -4,8 +4,7 @@
  */
 
 import { Logger } from './utils';
-import { EnhancedDatabaseStorage } from './db-enhanced-storage';
-import { checkDatabaseHealth } from './db-enhanced';
+import { prisma } from './db';
 import { getConnectionInfo, isNeonDatabase } from './db-connection-config';
 
 export interface DatabaseHealthStatus {
@@ -79,7 +78,8 @@ class DatabaseMonitor {
     const startTime = Date.now();
     
     try {
-      const isHealthy = await checkDatabaseHealth();
+      await prisma.$queryRaw`SELECT 1`;
+      const isHealthy = true;
       const latency = Date.now() - startTime;
       
       const status: DatabaseHealthStatus = {
@@ -170,7 +170,7 @@ class DatabaseMonitor {
     // Test 1: Basic health check
     const healthStart = Date.now();
     try {
-      await EnhancedDatabaseStorage.healthCheck();
+      await prisma.$queryRaw`SELECT 1`;
       operations.push({
         name: 'Health Check',
         success: true,
@@ -189,7 +189,7 @@ class DatabaseMonitor {
     // Test 2: Simple query
     const queryStart = Date.now();
     try {
-      await EnhancedDatabaseStorage.getAnalysesByUser('test-user-id');
+      await prisma.analysis.findMany({ where: { userId: 'test-user-id' } });
       operations.push({
         name: 'Simple Query',
         success: true,

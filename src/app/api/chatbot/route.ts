@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { geminiService } from '@/lib/gemini';
 import { DatabaseStorage } from '@/lib/db';
-import { OptimizedDatabaseStorage, prisma } from '@/lib/db-optimized';
+import { prisma } from '@/lib/db';
 import { Logger } from '@/lib/utils';
 import { getAuthenticatedUser } from '@/lib/auth';
 
@@ -104,7 +104,7 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
       }
     } else if (uploadId) {
       // Get specific upload data with its analyses using optimized storage
-      const upload = await OptimizedDatabaseStorage.getUploadDetails(uploadId, user.id);
+      const upload = await DatabaseStorage.getUploadById(uploadId);
       if (upload) {
         // Get the latest completed analysis for this upload
         const analysisQuery = await prisma.analysis.findFirst({
@@ -124,8 +124,8 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
         if (analysisQuery) {
           // Load transcription and analysis result on-demand
           const [transcription, analysisResult] = await Promise.all([
-            OptimizedDatabaseStorage.getTranscription(analysisQuery.id, user.id).catch(() => null),
-            OptimizedDatabaseStorage.getAnalysisResult(analysisQuery.id, user.id).catch(() => null)
+            DatabaseStorage.getAnalysisById(analysisQuery.id).then(a => a?.transcription).catch(() => null),
+            DatabaseStorage.getAnalysisById(analysisQuery.id).then(a => a?.analysisResult).catch(() => null)
           ]);
           
           contextData = `

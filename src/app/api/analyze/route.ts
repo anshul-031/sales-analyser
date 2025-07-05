@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
 import { DatabaseStorage } from '@/lib/db';
-import { EnhancedDatabaseStorage } from '@/lib/db-enhanced-storage';
 import { geminiService } from '@/lib/gemini';
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getAuthenticatedUser } from '@/lib/auth';
@@ -138,7 +137,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Get upload from database using enhanced storage
-        const upload = await EnhancedDatabaseStorage.getUploadById(uploadId);
+        const upload = await DatabaseStorage.getUploadById(uploadId);
         if (!upload) {
           Logger.error('[Analyze API] Upload not found:', uploadId);
           failedCount++;
@@ -151,8 +150,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Create analysis record using enhanced storage
-        const analysis = await EnhancedDatabaseStorage.createAnalysis({
+        const analysis = await DatabaseStorage.createAnalysis({
           status: 'PENDING',
           analysisType: analysisType.toUpperCase() as 'DEFAULT' | 'CUSTOM' | 'PARAMETERS',
           customPrompt,
@@ -230,7 +228,7 @@ export async function GET(request: NextRequest) {
 
     if (analysisId) {
       // Get specific analysis using enhanced storage
-      const analysis = await EnhancedDatabaseStorage.getAnalysisById(analysisId);
+      const analysis = await DatabaseStorage.getAnalysisById(analysisId);
       if (!analysis || analysis.userId !== user.id) {
         return NextResponse.json({
           success: false,
@@ -240,7 +238,7 @@ export async function GET(request: NextRequest) {
       analyses = [analysis];
     } else {
       // Get all analyses for user using enhanced storage
-      analyses = await EnhancedDatabaseStorage.getAnalysesByUser(user.id);
+      analyses = await DatabaseStorage.getAnalysesByUser(user.id);
     }
 
     // Convert BigInt to string for JSON serialization
@@ -274,7 +272,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     Logger.info('[Analyze API] Processing analysis in background:', analysisId);
 
     // Update status to processing using enhanced storage with retry
-    await EnhancedDatabaseStorage.updateAnalysis(analysisId, {
+    await DatabaseStorage.updateAnalysis(analysisId, {
       status: 'PROCESSING'
     });
 
@@ -311,7 +309,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     Logger.info('[Analyze API] Starting AI analysis for:', upload.filename);
 
     // Get analysis from database to check type
-    const analysis = await EnhancedDatabaseStorage.getAnalysisById(analysisId);
+    const analysis = await DatabaseStorage.getAnalysisById(analysisId);
     if (!analysis) {
       throw new Error('Analysis not found');
     }
@@ -340,7 +338,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     const analysisDuration = analysisEndTime - analysisStartTime;
 
     // Update analysis with results using enhanced storage with retry
-    await EnhancedDatabaseStorage.updateAnalysis(analysisId, {
+    await DatabaseStorage.updateAnalysis(analysisId, {
       analysisResult,
       status: 'COMPLETED',
       analysisDuration,
@@ -368,7 +366,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     const analysisDuration = analysisEndTime - analysisStartTime;
     
     // Update analysis with error using enhanced storage with retry
-    await EnhancedDatabaseStorage.updateAnalysis(analysisId, {
+    await DatabaseStorage.updateAnalysis(analysisId, {
       status: 'FAILED',
       errorMessage: error instanceof Error ? error.message : 'Unknown error occurred',
       analysisDuration,
