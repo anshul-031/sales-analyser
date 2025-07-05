@@ -119,6 +119,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (data.success) {
         setUser(data.user);
         console.log('[Auth] Login successful for user:', data.user);
+        
+        // Force a re-check of authentication to ensure consistency
+        setTimeout(() => {
+          checkAuth();
+        }, 100);
+        
         return { success: true };
       } else {
         console.log('[Auth] Login failed:', data.message);

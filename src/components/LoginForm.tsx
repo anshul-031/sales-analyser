@@ -14,6 +14,7 @@ function LoginFormContent() {
   const [isEmailVerificationNeeded, setIsEmailVerificationNeeded] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
+  const [isLoginSuccess, setIsLoginSuccess] = useState(false);
 
   const { login, user, loading } = useAuth();
   const router = useRouter();
@@ -25,7 +26,11 @@ function LoginFormContent() {
   // Redirect authenticated users
   useEffect(() => {
     if (!loading && user) {
-      router.push(redirectTo);
+      console.log('[LoginForm] User is authenticated, redirecting to:', redirectTo);
+      // Add a small delay to ensure state is fully settled
+      setTimeout(() => {
+        router.push(redirectTo);
+      }, 100);
     }
   }, [user, loading, router, redirectTo]);
 
@@ -76,24 +81,44 @@ function LoginFormContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent multiple submissions
+    if (isLoading) {
+      console.log('[LoginForm] Form submission blocked - already in progress');
+      return;
+    }
+    
+    console.log('[LoginForm] Starting login process...');
     setIsLoading(true);
     setError('');
     setIsEmailVerificationNeeded(false);
     setResendMessage('');
 
-    const result = await login(email, password);
-    
-    if (result.success) {
-      router.push(redirectTo);
-    } else {
-      // Check if the error is related to email verification
-      if (result.message?.includes('verify your email') || result.message?.includes('verification')) {
-        setIsEmailVerificationNeeded(true);
+    try {
+      const result = await login(email, password);
+      console.log('[LoginForm] Login result:', result);
+      
+      if (result.success) {
+        // Show success message
+        setError('');
+        setIsLoginSuccess(true);
+        console.log('[LoginForm] Login successful, waiting for redirect...');
+        
+        // The redirect will happen via the useEffect when user state updates
+        // Don't call setIsLoading(false) here - let the redirect happen naturally
+      } else {
+        // Check if the error is related to email verification
+        if (result.message?.includes('verify your email') || result.message?.includes('verification')) {
+          setIsEmailVerificationNeeded(true);
+        }
+        setError(result.message || 'Login failed');
+        setIsLoading(false);
       }
-      setError(result.message || 'Login failed');
+    } catch (error) {
+      console.error('Login submission error:', error);
+      setError('An unexpected error occurred. Please try again.');
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   return (
@@ -139,7 +164,7 @@ function LoginFormContent() {
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
+                disabled={isLoading || isLoginSuccess}
               />
             </div>
             <div className="relative">
@@ -156,7 +181,7 @@ function LoginFormContent() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
+                disabled={isLoading || isLoginSuccess}
               />
               <button
                 type="button"
@@ -176,6 +201,23 @@ function LoginFormContent() {
               </button>
             </div>
           </div>
+
+          {isLoginSuccess && (
+            <div className="rounded-md p-4 bg-green-50 border border-green-200">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-800">
+                    Login successful! Redirecting...
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className={`rounded-md p-4 ${isEmailVerificationNeeded ? 'bg-amber-50 border border-amber-200' : 'bg-red-50'}`}>
@@ -246,7 +288,7 @@ function LoginFormContent() {
           <div>
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || isLoginSuccess}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
@@ -255,7 +297,7 @@ function LoginFormContent() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Signing in...
+                  {isLoginSuccess ? 'Redirecting...' : 'Signing in...'}
                 </div>
               ) : (
                 'Sign in'
