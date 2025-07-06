@@ -101,6 +101,7 @@ const logSystemHealth = (requestId: string) => {
     environment: process.env.NODE_ENV,
     r2BucketName: process.env.R2_BUCKET_NAME ? 'configured' : 'missing',
     hasApiKeys: process.env.GOOGLE_GEMINI_API_KEYS ? 'configured' : 'missing',
+    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite-preview-06-17',
     autoDeleteFiles: process.env.AUTO_DELETE_FILES || 'undefined'
   });
 };

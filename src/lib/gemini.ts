@@ -154,11 +154,18 @@ export const DEFAULT_ANALYSIS_PARAMETERS = {
 };
 
 export class GeminiAnalysisService {
+  private getModelName(): string {
+    // Get the model name from environment variable, fallback to default
+    const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite-preview-06-17';
+    return modelName;
+  }
+
   private getCurrentModel() {
     // Get next API key in round-robin fashion and create a new client
     const currentApiKey = apiKeyManager.getNextAPIKey();
     const genAI = new GoogleGenerativeAI(currentApiKey);
-    return genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const modelName = this.getModelName();
+    return genAI.getGenerativeModel({ model: modelName });
   }
 
   private async makeAPICallWithRetry<T>(
@@ -200,7 +207,8 @@ export class GeminiAnalysisService {
   }
 
   constructor() {
-    console.log(`[GeminiService] Initialized with ${apiKeyManager.getKeyCount()} API key(s) and gemini-2.5-flash model`);
+    const modelName = this.getModelName();
+    console.log(`[GeminiService] Initialized with ${apiKeyManager.getKeyCount()} API key(s) and ${modelName} model`);
   }
 
   private async makeAPICallWithJsonResponse<T>(
