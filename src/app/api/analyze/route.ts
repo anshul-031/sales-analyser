@@ -62,22 +62,90 @@ const r2 = new S3Client({
   },
 });
 
+// Enhanced timeout and retry mechanism for Gemini API calls
+const withEnhancedTimeout = <T>(promise: Promise<T>, timeoutMs: number, operationName: string, requestId: string): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      const timeoutId = setTimeout(() => {
+        Logger.error(`[Analyze API] [${requestId}] ${operationName} timed out after ${timeoutMs}ms`);
+        reject(new Error(`${operationName} timed out after ${timeoutMs}ms. This may indicate API rate limiting or network issues.`));
+      }, timeoutMs);
+      
+      // Log a warning at 75% of timeout
+      setTimeout(() => {
+        Logger.warn(`[Analyze API] [${requestId}] ${operationName} taking longer than expected - ${timeoutMs * 0.75}ms elapsed`);
+      }, timeoutMs * 0.75);
+    })
+  ]);
+};
+
+// Add heartbeat logging for long-running operations
+const createHeartbeat = (requestId: string, operationName: string, intervalMs: number = 30000) => {
+  const startTime = Date.now();
+  const interval = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    Logger.info(`[Analyze API] [${requestId}] ${operationName} heartbeat - elapsed: ${elapsed}ms`);
+  }, intervalMs);
+  
+  return () => clearInterval(interval);
+};
+
+// Add monitoring function to track system health
+const logSystemHealth = (requestId: string) => {
+  Logger.info(`[Analyze API] [${requestId}] System Health Check:`, {
+    timestamp: new Date().toISOString(),
+    nodeVersion: process.version,
+    memoryUsage: process.memoryUsage(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV,
+    r2BucketName: process.env.R2_BUCKET_NAME ? 'configured' : 'missing',
+    hasApiKeys: process.env.GOOGLE_GEMINI_API_KEYS ? 'configured' : 'missing',
+    autoDeleteFiles: process.env.AUTO_DELETE_FILES || 'undefined'
+  });
+};
+
+// Add timeout wrapper for API calls
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`${operationName} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    })
+  ]);
+};
+
 export async function POST(request: NextRequest) {
+  const requestStartTime = Date.now();
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   try {
-    Logger.info('[Analyze API] Starting analysis request');
+    Logger.info(`[Analyze API] [${requestId}] Starting analysis request`);
 
     // Check authentication
     const user = await getAuthenticatedUser(request);
     if (!user) {
+      Logger.warn(`[Analyze API] [${requestId}] Authentication failed`);
       return NextResponse.json({
         success: false,
         error: 'Authentication required'
       }, { status: 401 });
     }
 
+    Logger.info(`[Analyze API] [${requestId}] User authenticated:`, user.id);
+
     const { uploadIds, analysisType, customPrompt, customParameters } = await request.json();
+    Logger.info(`[Analyze API] [${requestId}] Request payload:`, {
+      uploadIds: uploadIds?.length || 0,
+      analysisType,
+      hasCustomPrompt: !!customPrompt,
+      customParametersCount: customParameters?.length || 0
+    });
 
     if (!uploadIds || !Array.isArray(uploadIds) || uploadIds.length === 0) {
+      Logger.warn(`[Analyze API] [${requestId}] Invalid upload IDs provided:`, uploadIds);
       return NextResponse.json({
         success: false,
         error: 'Upload IDs are required'
@@ -88,6 +156,7 @@ export async function POST(request: NextRequest) {
     const validUploadIds = uploadIds.filter(id => id && typeof id === 'string' && id.trim().length > 0);
     
     if (validUploadIds.length === 0) {
+      Logger.warn(`[Analyze API] [${requestId}] No valid upload IDs after filtering:`, uploadIds);
       return NextResponse.json({
         success: false,
         error: 'No valid upload IDs provided'
@@ -95,10 +164,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (validUploadIds.length !== uploadIds.length) {
-      Logger.warn('[Analyze API] Filtered out invalid upload IDs:', uploadIds.length - validUploadIds.length, 'invalid IDs');
+      Logger.warn(`[Analyze API] [${requestId}] Filtered out invalid upload IDs:`, uploadIds.length - validUploadIds.length, 'invalid IDs');
     }
 
     if (analysisType !== 'default' && analysisType !== 'custom' && analysisType !== 'parameters') {
+      Logger.warn(`[Analyze API] [${requestId}] Invalid analysis type:`, analysisType);
       return NextResponse.json({
         success: false,
         error: 'Analysis type must be "default", "custom", or "parameters"'
@@ -106,6 +176,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (analysisType === 'custom' && !customPrompt) {
+      Logger.warn(`[Analyze API] [${requestId}] Custom prompt missing for custom analysis`);
       return NextResponse.json({
         success: false,
         error: 'Custom prompt is required for custom analysis'
@@ -113,42 +184,52 @@ export async function POST(request: NextRequest) {
     }
 
     if (analysisType === 'parameters' && (!customParameters || !Array.isArray(customParameters) || customParameters.length === 0)) {
+      Logger.warn(`[Analyze API] [${requestId}] Custom parameters missing for parameter analysis`);
       return NextResponse.json({
         success: false,
         error: 'Custom parameters are required for parameter-based analysis'
       }, { status: 400 });
     }
 
-    Logger.info('[Analyze API] Processing', validUploadIds.length, 'files for analysis');
+    Logger.info(`[Analyze API] [${requestId}] Processing`, validUploadIds.length, 'files for analysis');
 
     const analyses = [];
     let successCount = 0;
     let failedCount = 0;
 
     for (const uploadId of validUploadIds) {
+      const uploadStartTime = Date.now();
       try {
-        Logger.info('[Analyze API] Processing upload:', uploadId);
+        Logger.info(`[Analyze API] [${requestId}] Processing upload:`, uploadId);
 
         // Additional validation for upload ID
         if (!uploadId || typeof uploadId !== 'string' || uploadId.trim().length === 0) {
-          Logger.error('[Analyze API] Invalid upload ID:', uploadId);
+          Logger.error(`[Analyze API] [${requestId}] Invalid upload ID:`, uploadId);
           failedCount++;
           continue;
         }
 
         // Get upload from database using enhanced storage
+        Logger.info(`[Analyze API] [${requestId}] Fetching upload from database:`, uploadId);
         const upload = await DatabaseStorage.getUploadById(uploadId);
         if (!upload) {
-          Logger.error('[Analyze API] Upload not found:', uploadId);
+          Logger.error(`[Analyze API] [${requestId}] Upload not found in database:`, uploadId);
           failedCount++;
           continue;
         }
 
         if (upload.userId !== user.id) {
-          Logger.error('[Analyze API] Upload does not belong to user:', uploadId);
+          Logger.error(`[Analyze API] [${requestId}] Upload does not belong to user:`, uploadId, 'expected user:', user.id, 'actual user:', upload.userId);
           failedCount++;
           continue;
         }
+
+        Logger.info(`[Analyze API] [${requestId}] Upload validated:`, {
+          uploadId,
+          filename: upload.filename,
+          fileSize: upload.fileSize,
+          mimeType: upload.mimeType
+        });
 
         const analysis = await DatabaseStorage.createAnalysis({
           status: 'PENDING',
@@ -162,7 +243,12 @@ export async function POST(request: NextRequest) {
         analyses.push(analysis);
         successCount++;
 
-        Logger.info('[Analyze API] Created analysis record:', analysis.id);
+        Logger.info(`[Analyze API] [${requestId}] Created analysis record:`, {
+          analysisId: analysis.id,
+          uploadId,
+          analysisType: analysis.analysisType,
+          duration: Date.now() - uploadStartTime + 'ms'
+        });
 
         // Start background processing
         processAnalysisInBackground(analysis.id, {
@@ -170,24 +256,29 @@ export async function POST(request: NextRequest) {
           fileUrl: upload.fileUrl,
           mimeType: upload.mimeType,
           filename: upload.filename
-        }).catch(error => {
-          Logger.error('[Analyze API] Background analysis failed for', analysis.id + ':', error);
+        }, requestId).catch(error => {
+          Logger.error(`[Analyze API] [${requestId}] Background analysis failed for`, analysis.id + ':', error);
         });
 
-        Logger.info('[Analyze API] Starting background analysis for:', analysis.id);
+        Logger.info(`[Analyze API] [${requestId}] Starting background analysis for:`, analysis.id);
 
       } catch (error) {
-        Logger.error('[Analyze API] Error processing upload', uploadId + ':', error);
+        Logger.error(`[Analyze API] [${requestId}] Error processing upload`, uploadId + ':', error);
         failedCount++;
       }
     }
 
-    Logger.info('[Analyze API] Analysis requests processed. Success:', successCount, 'Failed:', failedCount);
+    Logger.info(`[Analyze API] [${requestId}] Analysis requests processed:`, {
+      total: validUploadIds.length,
+      successful: successCount,
+      failed: failedCount,
+      duration: Date.now() - requestStartTime + 'ms'
+    });
 
     // Import serialization utility
     const { serializeAnalyses } = await import('../../../lib/serialization');
 
-    return NextResponse.json({
+    const response = {
       success: true,
       message: `Analysis started for ${successCount} files`,
       analyses: serializeAnalyses(analyses),
@@ -196,23 +287,41 @@ export async function POST(request: NextRequest) {
         successful: successCount,
         failed: failedCount
       }
+    };
+
+    Logger.info(`[Analyze API] [${requestId}] Returning response:`, {
+      success: true,
+      analysesCount: analyses.length,
+      successCount,
+      failedCount
     });
 
+    return NextResponse.json(response);
+
   } catch (error) {
-    Logger.error('[Analyze API] POST request failed:', error);
+    Logger.error(`[Analyze API] [${requestId}] POST request failed:`, error);
+    const errorDetails = error instanceof Error ? error.message : 'Unknown error';
+    Logger.error(`[Analyze API] [${requestId}] Error details:`, errorDetails);
+    
     return NextResponse.json({
       success: false,
       error: 'Analysis request failed',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: errorDetails
     }, { status: 500 });
   }
 }
 
 export async function GET(request: NextRequest) {
+  const requestId = `get_req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const requestStartTime = Date.now();
+  
   try {
+    Logger.info(`[Analyze API] [${requestId}] GET request received`);
+    
     // Check authentication
     const user = await getAuthenticatedUser(request);
     if (!user) {
+      Logger.warn(`[Analyze API] [${requestId}] Authentication failed for GET request`);
       return NextResponse.json({
         success: false,
         error: 'Authentication required'
@@ -222,14 +331,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const analysisId = searchParams.get('analysisId');
 
-    Logger.info('[Analyze API] Fetching analyses for user:', user.id);
+    Logger.info(`[Analyze API] [${requestId}] Fetching analyses for user:`, {
+      userId: user.id,
+      specificAnalysis: analysisId || 'all'
+    });
 
     let analyses;
 
     if (analysisId) {
+      Logger.info(`[Analyze API] [${requestId}] Fetching specific analysis:`, analysisId);
       // Get specific analysis using enhanced storage
       const analysis = await DatabaseStorage.getAnalysisById(analysisId);
       if (!analysis || analysis.userId !== user.id) {
+        Logger.warn(`[Analyze API] [${requestId}] Analysis not found or access denied:`, {
+          analysisId,
+          found: !!analysis,
+          userId: user.id,
+          analysisUserId: analysis?.userId
+        });
         return NextResponse.json({
           success: false,
           error: 'Analysis not found'
@@ -237,9 +356,15 @@ export async function GET(request: NextRequest) {
       }
       analyses = [analysis];
     } else {
+      Logger.info(`[Analyze API] [${requestId}] Fetching all analyses for user:`, user.id);
       // Get all analyses for user using enhanced storage
       analyses = await DatabaseStorage.getAnalysesByUser(user.id);
     }
+
+    Logger.info(`[Analyze API] [${requestId}] Found analyses:`, {
+      count: analyses.length,
+      duration: Date.now() - requestStartTime + 'ms'
+    });
 
     // Convert BigInt to string for JSON serialization
     const serializedAnalyses = analyses.map((analysis: any) => ({
@@ -250,33 +375,53 @@ export async function GET(request: NextRequest) {
       } : analysis.upload
     }));
 
+    Logger.info(`[Analyze API] [${requestId}] Returning serialized analyses:`, {
+      count: serializedAnalyses.length,
+      totalDuration: Date.now() - requestStartTime + 'ms'
+    });
+
     return NextResponse.json({
       success: true,
       analyses: serializedAnalyses
     });
 
   } catch (error) {
-    Logger.error('[Analyze API] GET request failed:', error);
+    Logger.error(`[Analyze API] [${requestId}] GET request failed:`, error);
+    const errorDetails = error instanceof Error ? error.message : 'Unknown error';
+    Logger.error(`[Analyze API] [${requestId}] Error details:`, errorDetails);
+    
     return NextResponse.json({
       success: false,
       error: 'Failed to fetch analyses',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: errorDetails
     }, { status: 500 });
   }
 }
 
 // Background processing function
-async function processAnalysisInBackground(analysisId: string, upload: { id: string, fileUrl: string, mimeType: string, filename: string }) {
+async function processAnalysisInBackground(analysisId: string, upload: { id: string, fileUrl: string, mimeType: string, filename: string }, requestId: string = 'unknown') {
   const analysisStartTime = Date.now();
+  
+  // Log system health at start of processing
+  logSystemHealth(requestId);
+  
+  // Create heartbeat logger for long-running operation
+  const heartbeat = createHeartbeat(requestId, 'Background Analysis', 30000); // 30 seconds interval
+  
   try {
-    Logger.info('[Analyze API] Processing analysis in background:', analysisId);
+    Logger.info(`[Analyze API] [${requestId}] Processing analysis in background:`, analysisId);
 
     // Update status to processing using enhanced storage with retry
+    Logger.info(`[Analyze API] [${requestId}] Updating analysis status to PROCESSING:`, analysisId);
     await DatabaseStorage.updateAnalysis(analysisId, {
       status: 'PROCESSING'
     });
 
-    Logger.info('[Analyze API] Reading audio file from R2 for:', upload.filename);
+    Logger.info(`[Analyze API] [${requestId}] Reading audio file from R2:`, {
+      filename: upload.filename,
+      fileUrl: upload.fileUrl,
+      bucket: process.env.R2_BUCKET_NAME
+    });
     
     const { Body } = await r2.send(new GetObjectCommand({
         Bucket: process.env.R2_BUCKET_NAME!,
@@ -288,6 +433,11 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     }
 
     const audioBuffer = Buffer.from(await Body.transformToByteArray());
+    Logger.info(`[Analyze API] [${requestId}] Audio file loaded:`, {
+      filename: upload.filename,
+      bufferSize: audioBuffer.length,
+      originalSize: upload.fileUrl
+    });
     
     // Determine MIME type from file extension
     const extension = upload.filename.toLowerCase().split('.').pop();
@@ -304,9 +454,14 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
         'webm': 'audio/webm'
       };
       mimeType = mimeTypeMap[extension || ''] || 'audio/mpeg';
+      Logger.info(`[Analyze API] [${requestId}] Determined MIME type:`, mimeType, 'from extension:', extension);
     }
 
-    Logger.info('[Analyze API] Starting AI analysis for:', upload.filename);
+    Logger.info(`[Analyze API] [${requestId}] Starting AI analysis:`, {
+      filename: upload.filename,
+      mimeType,
+      analysisId
+    });
 
     // Get analysis from database to check type
     const analysis = await DatabaseStorage.getAnalysisById(analysisId);
@@ -314,28 +469,111 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       throw new Error('Analysis not found');
     }
 
-    // First transcribe the audio
-    const transcription = await geminiService.transcribeAudio(audioBuffer, upload.mimeType);
-    
-    // Then analyze based on type
-    let analysisResult;
-    if (analysis.analysisType === 'CUSTOM' && analysis.customPrompt) {
-      analysisResult = await geminiService.analyzeWithCustomPrompt(transcription, analysis.customPrompt);
-    } else if (analysis.analysisType === 'PARAMETERS' && analysis.customParameters) {
-      // Type assertion for JSON to expected parameter type
-      const parameters = analysis.customParameters as { id: string; name: string; description: string; prompt: string; enabled: boolean; }[];
-      analysisResult = await geminiService.analyzeWithCustomParameters(transcription, parameters);
-    } else {
-      analysisResult = await geminiService.analyzeWithDefaultParameters(transcription);
-    }
-    
-    // Add transcription to the result
-    analysisResult.transcription = transcription;
+    Logger.info(`[Analyze API] [${requestId}] Analysis configuration:`, {
+      analysisType: analysis.analysisType,
+      hasCustomPrompt: !!analysis.customPrompt,
+      customParametersCount: analysis.customParameters ? (analysis.customParameters as any[]).length : 0
+    });
 
-    Logger.info('[Analyze API] Analysis completed successfully');
+    // First transcribe the audio
+    Logger.info(`[Analyze API] [${requestId}] Starting transcription:`, {
+      filename: upload.filename,
+      audioSize: audioBuffer.length,
+      mimeType
+    });
+    
+    const transcriptionStartTime = Date.now();
+    const transcriptionHeartbeat = createHeartbeat(requestId, 'Transcription');
+    
+    let transcription: string;
+    let analysisResult: any;
+    
+    try {
+      transcription = await withTimeout(
+        geminiService.transcribeAudio(audioBuffer, upload.mimeType),
+        300000, // 5 minutes timeout for transcription
+        'Transcription'
+      );
+      transcriptionHeartbeat();
+      
+      const transcriptionDuration = Date.now() - transcriptionStartTime;
+      
+      Logger.info(`[Analyze API] [${requestId}] Transcription completed:`, {
+        filename: upload.filename,
+        transcriptionLength: transcription.length,
+        duration: transcriptionDuration + 'ms'
+      });
+      
+      // Then analyze based on type
+      const analysisStartTime = Date.now();
+      const analysisHeartbeat = createHeartbeat(requestId, 'Analysis');
+      
+      try {
+        if (analysis.analysisType === 'CUSTOM' && analysis.customPrompt) {
+          Logger.info(`[Analyze API] [${requestId}] Starting custom analysis with prompt`);
+          analysisResult = await withEnhancedTimeout(
+            geminiService.analyzeWithCustomPrompt(transcription, analysis.customPrompt),
+            600000, // 10 minutes timeout for custom analysis
+            'Custom Analysis',
+            requestId
+          );
+        } else if (analysis.analysisType === 'PARAMETERS' && analysis.customParameters) {
+          Logger.info(`[Analyze API] [${requestId}] Starting parameter-based analysis with`, (analysis.customParameters as any[]).length, 'parameters');
+          // Type assertion for JSON to expected parameter type
+          const parameters = analysis.customParameters as { id: string; name: string; description: string; prompt: string; enabled: boolean; }[];
+          analysisResult = await withEnhancedTimeout(
+            geminiService.analyzeWithCustomParameters(transcription, parameters),
+            900000, // 15 minutes timeout for parameter analysis (multiple API calls)
+            'Parameter Analysis',
+            requestId
+          );
+        } else {
+          Logger.info(`[Analyze API] [${requestId}] Starting default analysis`);
+          analysisResult = await withEnhancedTimeout(
+            geminiService.analyzeWithDefaultParameters(transcription),
+            600000, // 10 minutes timeout for default analysis
+            'Default Analysis',
+            requestId
+          );
+        }
+        
+        analysisHeartbeat();
+        
+        const analysisProcessingDuration = Date.now() - analysisStartTime;
+        Logger.info(`[Analyze API] [${requestId}] Analysis processing completed:`, {
+          filename: upload.filename,
+          analysisType: analysis.analysisType,
+          duration: analysisProcessingDuration + 'ms'
+        });
+        
+        // Add transcription to the result
+        analysisResult.transcription = transcription;
+
+        Logger.info(`[Analyze API] [${requestId}] Analysis completed successfully:`, {
+          filename: upload.filename,
+          analysisId,
+          totalDuration: Date.now() - analysisStartTime + 'ms'
+        });
+        
+      } catch (analysisError) {
+        analysisHeartbeat();
+        throw analysisError;
+      }
+      
+    } catch (transcriptionError) {
+      transcriptionHeartbeat();
+      throw transcriptionError;
+    }
     
     const analysisEndTime = Date.now();
     const analysisDuration = analysisEndTime - analysisStartTime;
+
+    Logger.info(`[Analyze API] [${requestId}] Updating analysis with results:`, {
+      analysisId,
+      analysisDuration: analysisDuration + 'ms',
+      transcriptionLength: transcription.length,
+      hasResults: !!analysisResult
+    });
 
     // Update analysis with results using enhanced storage with retry
     await DatabaseStorage.updateAnalysis(analysisId, {
@@ -345,47 +583,94 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       transcription,
     });
 
+    Logger.info(`[Analyze API] [${requestId}] Extracting and storing insights:`, analysisId);
     // Extract and store insights
-    await extractAndStoreInsights(analysisId, analysisResult);
+    await extractAndStoreInsights(analysisId, analysisResult, requestId);
 
     // Clean up the uploaded file after successful analysis (if enabled)
     const autoDeleteFiles = process.env.AUTO_DELETE_FILES === 'true';
     if (autoDeleteFiles) {
-      await cleanupUploadedFile(upload.id);
-      Logger.info('[Analyze API] Auto-cleanup enabled - deleted uploaded file');
+      Logger.info(`[Analyze API] [${requestId}] Auto-cleanup enabled - deleting uploaded file:`, upload.filename);
+      await cleanupUploadedFile(upload.id, requestId);
     } else {
-      Logger.info('[Analyze API] Auto-cleanup disabled - keeping uploaded file');
+      Logger.info(`[Analyze API] [${requestId}] Auto-cleanup disabled - keeping uploaded file:`, upload.filename);
     }
 
-    Logger.info('[Analyze API] Background analysis completed for:', analysisId);
+    Logger.info(`[Analyze API] [${requestId}] Background analysis completed successfully:`, {
+      analysisId,
+      filename: upload.filename,
+      totalDuration: analysisDuration + 'ms'
+    });
 
   } catch (error) {
-    Logger.error('[Analyze API] Background analysis failed for', analysisId + ':', error);
+    Logger.error(`[Analyze API] [${requestId}] Background analysis failed for`, analysisId + ':', error);
     
     const analysisEndTime = Date.now();
     const analysisDuration = analysisEndTime - analysisStartTime;
     
+    // Enhanced error categorization and logging
+    let errorCategory = 'UNKNOWN';
+    let errorMessage = 'Unknown error occurred';
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      
+      if (error.message.includes('timeout') || error.message.includes('timed out')) {
+        errorCategory = 'TIMEOUT';
+        Logger.error(`[Analyze API] [${requestId}] Analysis timed out after ${analysisDuration}ms for:`, upload.filename);
+      } else if (error.message.includes('QUOTA_EXCEEDED') || error.message.includes('429') || error.message.includes('Too Many Requests')) {
+        errorCategory = 'RATE_LIMIT';
+        Logger.error(`[Analyze API] [${requestId}] Rate limit exceeded for:`, upload.filename);
+      } else if (error.message.includes('API key') || error.message.includes('authentication') || error.message.includes('PERMISSION_DENIED')) {
+        errorCategory = 'AUTH_ERROR';
+        Logger.error(`[Analyze API] [${requestId}] Authentication error for:`, upload.filename);
+      } else if (error.message.includes('File not found') || error.message.includes('R2')) {
+        errorCategory = 'FILE_ERROR';
+        Logger.error(`[Analyze API] [${requestId}] File access error for:`, upload.filename);
+      } else if (error.message.includes('JSON') || error.message.includes('parse')) {
+        errorCategory = 'PARSING_ERROR';
+        Logger.error(`[Analyze API] [${requestId}] Response parsing error for:`, upload.filename);
+      } else {
+        errorCategory = 'API_ERROR';
+        Logger.error(`[Analyze API] [${requestId}] API error for:`, upload.filename);
+      }
+    }
+    
+    Logger.error(`[Analyze API] [${requestId}] Error details:`, {
+      filename: upload.filename,
+      analysisId,
+      errorCategory,
+      errorMessage,
+      analysisDuration: analysisDuration + 'ms',
+      stackTrace: error instanceof Error ? error.stack : 'No stack trace available'
+    });
+    
     // Update analysis with error using enhanced storage with retry
     await DatabaseStorage.updateAnalysis(analysisId, {
       status: 'FAILED',
-      errorMessage: error instanceof Error ? error.message : 'Unknown error occurred',
+      errorMessage: `${errorCategory}: ${errorMessage}`,
       analysisDuration,
     });
 
     // Clean up the uploaded file after failed analysis (if enabled)
     const autoDeleteFiles = process.env.AUTO_DELETE_FILES === 'true';
     if (autoDeleteFiles) {
-      await cleanupUploadedFile(upload.id);
-      Logger.info('[Analyze API] Auto-cleanup enabled - deleted uploaded file after failure');
+      Logger.info(`[Analyze API] [${requestId}] Auto-cleanup enabled - deleting uploaded file after failure:`, upload.filename);
+      await cleanupUploadedFile(upload.id, requestId);
     } else {
-      Logger.info('[Analyze API] Auto-cleanup disabled - keeping uploaded file after failure');
+      Logger.info(`[Analyze API] [${requestId}] Auto-cleanup disabled - keeping uploaded file after failure:`, upload.filename);
     }
+  } finally {
+    // Clear heartbeat interval
+    heartbeat();
   }
 }
 
 // Helper function to extract and store insights from analysis results
-async function extractAndStoreInsights(analysisId: string, analysisResult: any) {
+async function extractAndStoreInsights(analysisId: string, analysisResult: any, requestId: string = 'unknown') {
   try {
+    Logger.info(`[Analyze API] [${requestId}] Extracting insights for analysis:`, analysisId);
+    
     const insights = [];
 
     // Extract different types of insights based on the analysis result structure
@@ -456,7 +741,7 @@ async function extractAndStoreInsights(analysisId: string, analysisResult: any) 
     // Store insights in batch
     if (insights.length > 0) {
       await DatabaseStorage.createMultipleInsights(insights);
-      Logger.info('[Analyze API] Stored', insights.length, 'insights for analysis:', analysisId);
+      Logger.info(`[Analyze API] [${requestId}] Stored`, insights.length, 'insights for analysis:', analysisId);
     }
 
     // Extract and store call metrics if available
@@ -473,22 +758,31 @@ async function extractAndStoreInsights(analysisId: string, analysisResult: any) 
         pauseCount: analysisResult.metrics.pauseCount,
         speakingPace: analysisResult.metrics.speakingPace,
       });
-      Logger.info('[Analyze API] Stored call metrics for analysis:', analysisId);
+      Logger.info(`[Analyze API] [${requestId}] Stored call metrics for analysis:`, analysisId);
     }
 
   } catch (error) {
-    Logger.error('[Analyze API] Error extracting insights:', error);
+    Logger.error(`[Analyze API] [${requestId}] Error extracting insights:`, error);
   }
 }
 
 // Helper function to cleanup uploaded files
-async function cleanupUploadedFile(uploadId: string) {
+async function cleanupUploadedFile(uploadId: string, requestId: string = 'unknown') {
   try {
+    Logger.info(`[Analyze API] [${requestId}] Starting file cleanup for upload:`, uploadId);
+    
     const upload = await DatabaseStorage.getUploadById(uploadId);
     if (!upload) {
-      Logger.warn('[Analyze API] Upload not found for cleanup:', uploadId);
+      Logger.warn(`[Analyze API] [${requestId}] Upload not found for cleanup:`, uploadId);
       return;
     }
+
+    Logger.info(`[Analyze API] [${requestId}] Deleting file from R2:`, {
+      uploadId,
+      filename: upload.filename,
+      fileUrl: upload.fileUrl,
+      bucket: process.env.R2_BUCKET_NAME
+    });
 
     // Delete the object from R2 storage only
     try {
@@ -496,16 +790,16 @@ async function cleanupUploadedFile(uploadId: string) {
         Bucket: process.env.R2_BUCKET_NAME!,
         Key: upload.fileUrl,
       }));
-      Logger.info('[Analyze API] Deleted file from R2:', upload.fileUrl);
+      Logger.info(`[Analyze API] [${requestId}] Successfully deleted file from R2:`, upload.fileUrl);
     } catch (r2Error) {
-      Logger.error('[Analyze API] Error deleting file from R2:', r2Error);
+      Logger.error(`[Analyze API] [${requestId}] Error deleting file from R2:`, r2Error);
     }
 
     // Keep the upload record in database for analysis history
     // Only mark it as file deleted or update metadata if needed
-    Logger.info('[Analyze API] Kept upload record for analysis history:', uploadId);
+    Logger.info(`[Analyze API] [${requestId}] Kept upload record for analysis history:`, uploadId);
 
   } catch (error) {
-    Logger.error('[Analyze API] Error during file cleanup:', error);
+    Logger.error(`[Analyze API] [${requestId}] Error during file cleanup:`, error);
   }
 }
