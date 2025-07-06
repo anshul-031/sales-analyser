@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Logger } from '@/lib/utils';
+import { Logger, AdaptiveTimeout } from '@/lib/utils';
 import { DatabaseStorage } from '@/lib/db';
 import { geminiService } from '@/lib/gemini';
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
@@ -74,30 +74,38 @@ const withEnhancedTimeout = <T>(
   operationName: string,
   requestId: string = 'unknown'
 ): Promise<T> => {
-  const timeoutPromise = new Promise<T>((_, reject) => {
-    setTimeout(() => {
-      Logger.production('error', `Operation Timeout: ${operationName}`, {
-        operation: operationName,
-        timeoutMs,
-        requestId,
-        timestamp: new Date().toISOString()
-      });
-      reject(new Error(`${operationName} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
+  // Use adaptive timeout for long-running operations
+  const maxTimeoutMs = Math.max(timeoutMs * 3, LoggingConfig.timeouts.longRunningTimeout);
+  
+  Logger.analysis(`Starting ${operationName} with adaptive timeout (base: ${timeoutMs}ms, max: ${maxTimeoutMs}ms)`);
+  
+  return AdaptiveTimeout.createExtendableTimeout(
+    promise,
+    timeoutMs,
+    maxTimeoutMs,
+    operationName,
+    (elapsed) => {
+      Logger.warn(`[Analyze API] [${requestId}] ${operationName} taking longer than expected - ${elapsed}ms elapsed`);
+    }
+  );
+};
 
-  // Enhanced monitoring during operation
-  const monitoredPromise = Promise.race([promise, timeoutPromise]);
+// Enhanced timeout specifically for Gemini API calls with progressive logging
+const withGeminiTimeout = <T>(
+  promise: Promise<T>,
+  operationName: string,
+  requestId: string = 'unknown'
+): Promise<T> => {
+  const baseTimeout = LoggingConfig.timeouts.geminiApiTimeout;
   
-  // Log operation start
-  Logger.analysis(`Starting ${operationName} with ${timeoutMs}ms timeout`);
+  Logger.analysis(`Starting ${operationName} with progressive timeout: ${baseTimeout}ms`);
   
-  // Log a warning at 75% of timeout
-  setTimeout(() => {
-    Logger.warn(`[Analyze API] [${requestId}] ${operationName} taking longer than expected - ${Math.round(timeoutMs * 0.75)}ms elapsed`);
-  }, timeoutMs * 0.75);
-  
-  return monitoredPromise;
+  return AdaptiveTimeout.createProgressiveTimeout(
+    promise,
+    baseTimeout,
+    operationName,
+    30000 // Progress logging every 30 seconds
+  );
 };
 
 // Add heartbeat logging for long-running operations
@@ -516,9 +524,8 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     let analysisResult: any;
     
     try {
-      transcription = await withEnhancedTimeout(
+      transcription = await withGeminiTimeout(
         geminiService.transcribeAudio(audioBuffer, upload.mimeType),
-        getTimeouts().transcription,
         'Transcription',
         requestId
       );
@@ -542,9 +549,8 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       try {
         if (analysis.analysisType === 'CUSTOM' && analysis.customPrompt) {
           Logger.info(`[Analyze API] [${requestId}] Starting custom analysis with prompt`);
-          analysisResult = await withEnhancedTimeout(
+          analysisResult = await withGeminiTimeout(
             geminiService.analyzeWithCustomPrompt(transcription, analysis.customPrompt),
-            getTimeouts().customAnalysis,
             'Custom Analysis',
             requestId
           );
@@ -552,17 +558,15 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
           Logger.info(`[Analyze API] [${requestId}] Starting parameter-based analysis with`, (analysis.customParameters as any[]).length, 'parameters');
           // Type assertion for JSON to expected parameter type
           const parameters = analysis.customParameters as { id: string; name: string; description: string; prompt: string; enabled: boolean; }[];
-          analysisResult = await withEnhancedTimeout(
+          analysisResult = await withGeminiTimeout(
             geminiService.analyzeWithCustomParameters(transcription, parameters),
-            getTimeouts().analysis,
             'Parameter Analysis',
             requestId
           );
         } else {
           Logger.info(`[Analyze API] [${requestId}] Starting default analysis`);
-          analysisResult = await withEnhancedTimeout(
+          analysisResult = await withGeminiTimeout(
             geminiService.analyzeWithDefaultParameters(transcription),
-            getTimeouts().customAnalysis,
             'Default Analysis',
             requestId
           );

@@ -252,3 +252,245 @@ export function getStatusIcon(status: string): string {
       return '○';
   }
 }
+
+// Adaptive timeout utilities for long-running operations
+export class AdaptiveTimeout {
+  /**
+   * Creates a timeout that can be extended based on operation progress
+   */
+  static createExtendableTimeout<T>(
+    promise: Promise<T>,
+    initialTimeoutMs: number,
+    maxTimeoutMs: number,
+    operationName: string,
+    onProgress?: (elapsed: number) => void
+  ): Promise<T> {
+    let timeoutId: NodeJS.Timeout;
+    let isCompleted = false;
+    const startTime = Date.now();
+    
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      let currentTimeout = initialTimeoutMs;
+      
+      const scheduleTimeout = () => {
+        timeoutId = setTimeout(() => {
+          const elapsed = Date.now() - startTime;
+          
+          if (elapsed >= maxTimeoutMs) {
+            Logger.production('error', `Maximum timeout reached for ${operationName}`, {
+              operation: operationName,
+              elapsed,
+              maxTimeout: maxTimeoutMs,
+              timestamp: new Date().toISOString()
+            });
+            reject(new Error(`${operationName} exceeded maximum timeout of ${maxTimeoutMs}ms`));
+          } else if (elapsed >= currentTimeout) {
+            // Double the timeout up to maximum
+            currentTimeout = Math.min(currentTimeout * 2, maxTimeoutMs);
+            Logger.warn(`[AdaptiveTimeout] Extending timeout for ${operationName}: ${elapsed}ms elapsed, next timeout: ${currentTimeout}ms`);
+            
+            if (onProgress) {
+              onProgress(elapsed);
+            }
+            
+            // Schedule next timeout check
+            scheduleTimeout();
+          }
+        }, currentTimeout);
+      };
+      
+      scheduleTimeout();
+    });
+    
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      isCompleted = true;
+    };
+    
+    return Promise.race([
+      promise.finally(cleanup),
+      timeoutPromise
+    ]);
+  }
+  
+  /**
+   * Creates a timeout with periodic progress logging
+   */
+  static createProgressiveTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    operationName: string,
+    progressIntervalMs: number = 30000 // 30 seconds
+  ): Promise<T> {
+    const startTime = Date.now();
+    let progressInterval: NodeJS.Timeout;
+    
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      // Set up progress logging
+      progressInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        if (elapsed < timeoutMs) {
+          Logger.info(`[ProgressiveTimeout] ${operationName} progress: ${elapsed}ms elapsed (${Math.round((elapsed / timeoutMs) * 100)}%)`);
+        }
+      }, progressIntervalMs);
+      
+      // Set up timeout
+      setTimeout(() => {
+        clearInterval(progressInterval);
+        Logger.production('error', `Progressive timeout exceeded for ${operationName}`, {
+          operation: operationName,
+          timeoutMs,
+          timestamp: new Date().toISOString()
+        });
+        reject(new Error(`${operationName} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+    
+    const cleanup = () => {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+    };
+    
+    return Promise.race([
+      promise.finally(cleanup),
+      timeoutPromise
+    ]);
+  }
+  
+  /**
+   * Creates a timeout that adapts based on historical performance
+   */
+  static createAdaptiveTimeout<T>(
+    promise: Promise<T>,
+    baseTimeoutMs: number,
+    operationName: string,
+    maxMultiplier: number = 5 // Maximum 5x the base timeout
+  ): Promise<T> {
+    // Try to get historical performance data
+    const historicalDuration = AdaptiveTimeout.getHistoricalDuration(operationName);
+    
+    // Calculate adaptive timeout
+    let adaptiveTimeout = baseTimeoutMs;
+    if (historicalDuration > 0) {
+      // Use 2x the historical average, but cap at maxMultiplier
+      adaptiveTimeout = Math.min(historicalDuration * 2, baseTimeoutMs * maxMultiplier);
+    }
+    
+    Logger.info(`[AdaptiveTimeout] Using adaptive timeout for ${operationName}: ${adaptiveTimeout}ms (base: ${baseTimeoutMs}ms, historical: ${historicalDuration}ms)`);
+    
+    const startTime = Date.now();
+    const timeoutPromise = new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        Logger.production('error', `Adaptive timeout exceeded for ${operationName}`, {
+          operation: operationName,
+          adaptiveTimeout,
+          baseTimeout: baseTimeoutMs,
+          historicalDuration,
+          timestamp: new Date().toISOString()
+        });
+        reject(new Error(`${operationName} timed out after ${adaptiveTimeout}ms`));
+      }, adaptiveTimeout);
+    });
+    
+    return Promise.race([
+      promise.then(result => {
+        // Record successful duration for future adaptive calculations
+        const duration = Date.now() - startTime;
+        AdaptiveTimeout.recordDuration(operationName, duration);
+        return result;
+      }),
+      timeoutPromise
+    ]);
+  }
+  
+  private static performanceHistory: Map<string, number[]> = new Map();
+  
+  private static getHistoricalDuration(operationName: string): number {
+    const history = this.performanceHistory.get(operationName) || [];
+    if (history.length === 0) return 0;
+    
+    // Return the 90th percentile of historical durations
+    const sorted = [...history].sort((a, b) => a - b);
+    const index = Math.floor(sorted.length * 0.9);
+    return sorted[index];
+  }
+  
+  private static recordDuration(operationName: string, duration: number) {
+    if (!this.performanceHistory.has(operationName)) {
+      this.performanceHistory.set(operationName, []);
+    }
+    
+    const history = this.performanceHistory.get(operationName)!;
+    history.push(duration);
+    
+    // Keep only the last 50 entries
+    if (history.length > 50) {
+      history.shift();
+    }
+  }
+}
+
+// Circuit breaker for Gemini API calls
+export class GeminiCircuitBreaker {
+  private failureCount = 0;
+  private lastFailureTime = 0;
+  private state: 'CLOSED' | 'OPEN' | 'HALF_OPEN' = 'CLOSED';
+  
+  private readonly failureThreshold = 5;
+  private readonly timeout = 300000; // 5 minutes
+  private readonly successThreshold = 2;
+  private successCount = 0;
+  
+  async execute<T>(operation: () => Promise<T>, operationName: string): Promise<T> {
+    if (this.state === 'OPEN') {
+      if (Date.now() - this.lastFailureTime > this.timeout) {
+        this.state = 'HALF_OPEN';
+        this.successCount = 0;
+        Logger.info(`[CircuitBreaker] ${operationName} - State changed to HALF_OPEN`);
+      } else {
+        Logger.warn(`[CircuitBreaker] ${operationName} - Circuit is OPEN, rejecting call`);
+        throw new Error(`Circuit breaker is OPEN for ${operationName}`);
+      }
+    }
+    
+    try {
+      Logger.debug(`[CircuitBreaker] ${operationName} - Executing operation (state: ${this.state})`);
+      const result = await operation();
+      
+      if (this.state === 'HALF_OPEN') {
+        this.successCount++;
+        if (this.successCount >= this.successThreshold) {
+          this.state = 'CLOSED';
+          this.failureCount = 0;
+          Logger.info(`[CircuitBreaker] ${operationName} - State changed to CLOSED`);
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      this.failureCount++;
+      this.lastFailureTime = Date.now();
+      
+      if (this.failureCount >= this.failureThreshold) {
+        this.state = 'OPEN';
+        Logger.error(`[CircuitBreaker] ${operationName} - State changed to OPEN due to ${this.failureCount} failures`);
+      }
+      
+      throw error;
+    }
+  }
+  
+  getState() {
+    return {
+      state: this.state,
+      failureCount: this.failureCount,
+      lastFailureTime: this.lastFailureTime
+    };
+  }
+}
+
+// Global circuit breaker instance
+const geminiCircuitBreaker = new GeminiCircuitBreaker();

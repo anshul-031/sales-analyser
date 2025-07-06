@@ -12,12 +12,21 @@ export const LoggingConfig = {
   // Log levels - always use debug for maximum detail
   logLevel: process.env.LOG_LEVEL || 'debug',
   
-  // Timeout configurations
+  // Timeout configurations - Extended for long-running operations
   timeouts: {
-    transcription: parseInt(process.env.TRANSCRIPTION_TIMEOUT_MS || '300000'), // 5 minutes
-    analysis: parseInt(process.env.ANALYSIS_TIMEOUT_MS || '900000'), // 15 minutes
-    customAnalysis: parseInt(process.env.ANALYSIS_TIMEOUT_MS || '600000'), // 10 minutes
+    transcription: parseInt(process.env.TRANSCRIPTION_TIMEOUT_MS || '1800000'), // 30 minutes (was 5 minutes)
+    analysis: parseInt(process.env.ANALYSIS_TIMEOUT_MS || '2700000'), // 45 minutes (was 15 minutes)
+    customAnalysis: parseInt(process.env.CUSTOM_ANALYSIS_TIMEOUT_MS || '2700000'), // 45 minutes (was 10 minutes)
     heartbeatInterval: parseInt(process.env.HEARTBEAT_INTERVAL_MS || '30000'), // 30 seconds
+    
+    // New timeout for extremely long operations
+    longRunningTimeout: parseInt(process.env.LONG_RUNNING_TIMEOUT_MS || '3600000'), // 1 hour
+    
+    // Gemini API specific timeouts
+    geminiApiTimeout: parseInt(process.env.GEMINI_API_TIMEOUT_MS || '2700000'), // 45 minutes
+    
+    // Background processing timeout
+    backgroundProcessingTimeout: parseInt(process.env.BACKGROUND_PROCESSING_TIMEOUT_MS || '3600000'), // 1 hour
   },
   
   // Performance monitoring

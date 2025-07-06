@@ -1,9 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Logger } from './utils';
+import { Logger, GeminiCircuitBreaker } from './utils';
 import { DEFAULT_ANALYSIS_PARAMETERS } from './analysis-constants';
 
 // Re-export for backward compatibility
 export { DEFAULT_ANALYSIS_PARAMETERS };
+
+// Global circuit breaker instance
+const geminiCircuitBreaker = new GeminiCircuitBreaker();
 
 // Round-robin API key management
 class GeminiAPIKeyManager {
@@ -121,91 +124,110 @@ export class GeminiAnalysisService {
     maxRetries: number = apiKeyManager.getKeyCount(),
     operationName: string = 'API Call'
   ): Promise<T> {
-    let lastError: Error | null = null;
-    
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        Logger.analysis(`${operationName} attempt ${attempt + 1}/${maxRetries}`);
-        const startTime = Date.now();
-        
-        const result = await operation();
-        
-        const duration = Date.now() - startTime;
-        Logger.performance(`${operationName}`, duration);
-        
-        return result;
-      } catch (error) {
-        lastError = error as Error;
-        Logger.error(`${operationName} failed on attempt ${attempt + 1}:`, error);
-        
-        // Enhanced error categorization for production debugging
-        if (error instanceof Error) {
-          const errorMessage = error.message.toLowerCase();
+    // Use circuit breaker for all API calls
+    return geminiCircuitBreaker.execute(async () => {
+      let lastError: Error | null = null;
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          Logger.analysis(`${operationName} attempt ${attempt + 1}/${maxRetries}`);
+          const startTime = Date.now();
           
-          if (errorMessage.includes('quota_exceeded') || 
-              errorMessage.includes('rate_limit_exceeded') ||
-              errorMessage.includes('429') ||
-              errorMessage.includes('too many requests')) {
-            Logger.warn(`[GeminiService] Rate limit detected on attempt ${attempt + 1}, trying next API key...`);
+          const result = await operation();
+          
+          const duration = Date.now() - startTime;
+          Logger.performance(`${operationName}`, duration);
+          
+          return result;
+        } catch (error) {
+          lastError = error as Error;
+          Logger.error(`${operationName} failed on attempt ${attempt + 1}:`, error);
+          
+          // Enhanced error categorization for production debugging
+          if (error instanceof Error) {
+            const errorMessage = error.message.toLowerCase();
             
-            // Add exponential backoff for rate limits
-            const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
-            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            if (errorMessage.includes('quota_exceeded') || 
+                errorMessage.includes('rate_limit_exceeded') ||
+                errorMessage.includes('429') ||
+                errorMessage.includes('too many requests')) {
+              Logger.warn(`[GeminiService] Rate limit detected on attempt ${attempt + 1}, trying next API key...`);
+              
+              // Add exponential backoff for rate limits
+              const backoffMs = Math.min(1000 * Math.pow(2, attempt), 30000); // Max 30 seconds
+              await new Promise(resolve => setTimeout(resolve, backoffMs));
+              
+            } else if (errorMessage.includes('permission_denied') || 
+                       errorMessage.includes('api key') ||
+                       errorMessage.includes('authentication')) {
+              Logger.error(`[GeminiService] Authentication error: ${error.message}`);
+              // Don't retry auth errors
+              break;
+              
+            } else if (errorMessage.includes('timeout') || 
+                       errorMessage.includes('timed out') ||
+                       errorMessage.includes('request timeout')) {
+              Logger.warn(`[GeminiService] Timeout error on attempt ${attempt + 1}: ${error.message}`);
+              
+              // For timeout errors, add longer delay and continue retrying
+              await new Promise(resolve => setTimeout(resolve, 5000)); // 5 seconds
+              
+            } else if (errorMessage.includes('invalid') || 
+                       errorMessage.includes('bad request')) {
+              Logger.error(`[GeminiService] Invalid request error: ${error.message}`);
+              // Don't retry invalid requests
+              break;
+              
+            } else if (errorMessage.includes('service unavailable') ||
+                       errorMessage.includes('internal server error') ||
+                       errorMessage.includes('502') ||
+                       errorMessage.includes('503') ||
+                       errorMessage.includes('504')) {
+              Logger.warn(`[GeminiService] Service unavailable on attempt ${attempt + 1}: ${error.message}`);
+              
+              // For service errors, add exponential backoff
+              const backoffMs = Math.min(2000 * Math.pow(2, attempt), 60000); // Max 1 minute
+              await new Promise(resolve => setTimeout(resolve, backoffMs));
+              
+            } else {
+              Logger.warn(`[GeminiService] Unknown error on attempt ${attempt + 1}: ${error.message}`);
+              // Add short delay for unknown errors
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
             
-          } else if (errorMessage.includes('permission_denied') || 
-                     errorMessage.includes('api key') ||
-                     errorMessage.includes('authentication')) {
-            Logger.error(`[GeminiService] Authentication error: ${error.message}`);
-            // Don't retry auth errors
-            break;
-            
-          } else if (errorMessage.includes('timeout') || 
-                     errorMessage.includes('timed out')) {
-            Logger.warn(`[GeminiService] Timeout error on attempt ${attempt + 1}: ${error.message}`);
-            
-            // For timeout errors, add longer delay
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-          } else if (errorMessage.includes('invalid') || 
-                     errorMessage.includes('bad request')) {
-            Logger.error(`[GeminiService] Invalid request error: ${error.message}`);
-            // Don't retry invalid requests
-            break;
-            
-          } else {
-            Logger.warn(`[GeminiService] Unknown error on attempt ${attempt + 1}: ${error.message}`);
-            // Add short delay for unknown errors
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Production logging for critical errors
+            if (process.env.NODE_ENV === 'production') {
+              Logger.production('error', `Gemini API Error - Attempt ${attempt + 1}/${maxRetries}`, {
+                operationName,
+                errorMessage: error.message,
+                errorType: errorMessage.includes('quota') ? 'QUOTA' : 
+                           errorMessage.includes('auth') ? 'AUTH' : 
+                           errorMessage.includes('timeout') ? 'TIMEOUT' : 
+                           errorMessage.includes('service') ? 'SERVICE' : 'UNKNOWN',
+                retryAfter: attempt < maxRetries - 1 ? 'YES' : 'NO',
+                circuitBreakerState: geminiCircuitBreaker.getState()
+              });
+            }
           }
           
-          // Production logging for critical errors
-          if (process.env.NODE_ENV === 'production') {
-            Logger.production('error', `Gemini API Error - Attempt ${attempt + 1}/${maxRetries}`, {
-              operationName,
-              errorMessage: error.message,
-              errorType: errorMessage.includes('quota') ? 'QUOTA' : 
-                         errorMessage.includes('auth') ? 'AUTH' : 
-                         errorMessage.includes('timeout') ? 'TIMEOUT' : 'UNKNOWN'
-            });
+          // If this is the last attempt or a non-retryable error, don't continue
+          if (attempt === maxRetries - 1) {
+            break;
           }
-        }
-        
-        // If this is the last attempt or a non-retryable error, don't continue
-        if (attempt === maxRetries - 1) {
-          break;
         }
       }
-    }
-    
-    // Log final failure
-    Logger.production('error', `Gemini API Call Failed After All Retries`, {
-      operationName,
-      maxRetries,
-      finalError: lastError?.message || 'Unknown error',
-      timestamp: new Date().toISOString()
-    });
-    
-    throw lastError || new Error(`${operationName} failed after ${maxRetries} attempts`);
+      
+      // Log final failure
+      Logger.production('error', `Gemini API Call Failed After All Retries`, {
+        operationName,
+        maxRetries,
+        finalError: lastError?.message || 'Unknown error',
+        circuitBreakerState: geminiCircuitBreaker.getState(),
+        timestamp: new Date().toISOString()
+      });
+      
+      throw lastError || new Error(`${operationName} failed after ${maxRetries} attempts`);
+    }, operationName);
   }
 
   constructor() {
