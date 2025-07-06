@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Play, Settings, FileText, Sparkles, AlertCircle } from 'lucide-react';
-import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/gemini';
+import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/analysis-constants';
 
 interface AnalysisConfigProps {
   uploadedFiles: Array<{ id: string; originalName: string; uploadedAt: string }>;

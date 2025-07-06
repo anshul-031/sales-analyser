@@ -1,16 +1,16 @@
 // Production logging configuration
 export const LoggingConfig = {
-  // Enable comprehensive logging in production
-  enableProductionLogs: process.env.NODE_ENV === 'production',
+  // Enable comprehensive logging in all environments
+  enableProductionLogs: true,
   
-  // Database operation logging
-  enableDatabaseLogs: process.env.ENABLE_DATABASE_LOGS === 'true' || process.env.NODE_ENV === 'development',
+  // Database operation logging - always enabled for detailed monitoring
+  enableDatabaseLogs: true,
   
-  // Analysis debugging
-  enableAnalysisDebug: process.env.ENABLE_ANALYSIS_DEBUG === 'true' || process.env.NODE_ENV === 'development',
+  // Analysis debugging - always enabled for detailed monitoring
+  enableAnalysisDebug: true,
   
-  // Log levels
-  logLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+  // Log levels - always use debug for maximum detail
+  logLevel: process.env.LOG_LEVEL || 'debug',
   
   // Timeout configurations
   timeouts: {
@@ -23,10 +23,10 @@ export const LoggingConfig = {
   // Performance monitoring
   slowOperationThreshold: parseInt(process.env.SLOW_OPERATION_THRESHOLD_MS || '10000'), // 10 seconds
   
-  // Error reporting
-  enableErrorReporting: process.env.NODE_ENV === 'production',
+  // Error reporting - always enabled for comprehensive monitoring
+  enableErrorReporting: true,
   
-  // System health monitoring
+  // System health monitoring - always enabled
   enableSystemHealthLogs: true,
   healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL_MS || '60000'), // 1 minute
   

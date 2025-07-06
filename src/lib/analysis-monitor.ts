@@ -305,7 +305,7 @@ class AnalysisMonitor {
 // Export singleton instance
 export const analysisMonitor = AnalysisMonitor.getInstance();
 
-// Auto-start monitoring in production and development
-if (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'development') {
+// Auto-start monitoring in all environments for comprehensive tracking
+if (typeof process !== 'undefined') {
   analysisMonitor.startMonitoring();
 }

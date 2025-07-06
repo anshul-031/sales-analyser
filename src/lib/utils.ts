@@ -64,10 +64,11 @@ export function generateUniqueFilename(originalName: string): string {
 
 // Logger utility
 export class Logger {
-  private static logLevel = process.env.LOG_LEVEL || 'info';
-  private static isProduction = process.env.NODE_ENV === 'production';
-  private static enableDatabaseLogs = process.env.ENABLE_DATABASE_LOGS === 'true';
-  private static enableAnalysisDebug = process.env.ENABLE_ANALYSIS_DEBUG === 'true';
+  private static logLevel = (typeof process !== 'undefined' ? process.env.LOG_LEVEL : 'debug') || 'debug';
+  private static isProduction = (typeof process !== 'undefined' ? process.env.NODE_ENV : 'development') === 'production';
+  private static enableDatabaseLogs = true; // Always enabled for detailed monitoring
+  private static enableAnalysisDebug = true; // Always enabled for detailed monitoring
+  private static isServer = typeof process !== 'undefined' && process.stdout;
   
   private static shouldLog(level: string): boolean {
     const levels = ['error', 'warn', 'info', 'debug'];
@@ -87,8 +88,8 @@ export class Logger {
       const formattedMessage = this.formatMessage('error', message);
       console.error(formattedMessage, ...args);
       
-      // In production, also log to stderr for better visibility
-      if (this.isProduction) {
+      // Always log to stderr for better visibility (server-side only)
+      if (this.isServer) {
         process.stderr.write(formattedMessage + '\n');
         if (args.length > 0) {
           process.stderr.write(`Additional info: ${JSON.stringify(args, null, 2)}\n`);
@@ -102,8 +103,8 @@ export class Logger {
       const formattedMessage = this.formatMessage('warn', message);
       console.warn(formattedMessage, ...args);
       
-      // Enhanced production logging
-      if (this.isProduction) {
+      // Always log to stdout for better visibility (server-side only)
+      if (this.isServer) {
         process.stdout.write(formattedMessage + '\n');
       }
     }
@@ -114,8 +115,8 @@ export class Logger {
       const formattedMessage = this.formatMessage('info', message);
       console.info(formattedMessage, ...args);
       
-      // Enhanced production logging
-      if (this.isProduction) {
+      // Always log to stdout for better visibility (server-side only)
+      if (this.isServer) {
         process.stdout.write(formattedMessage + '\n');
       }
     }
@@ -125,25 +126,26 @@ export class Logger {
     if (this.shouldLog('debug')) {
       const formattedMessage = this.formatMessage('debug', message);
       console.debug(formattedMessage, ...args);
+      
+      // Always log debug messages to stdout for comprehensive monitoring (server-side only)
+      if (this.isServer) {
+        process.stdout.write(formattedMessage + '\n');
+      }
     }
   }
   
-  // Special methods for database and analysis logging
+  // Special methods for database and analysis logging - always enabled
   static database(message: string, ...args: any[]): void {
-    if (this.enableDatabaseLogs || !this.isProduction) {
-      this.info(`[DATABASE] ${message}`, ...args);
-    }
+    this.info(`[DATABASE] ${message}`, ...args);
   }
   
   static analysis(message: string, ...args: any[]): void {
-    if (this.enableAnalysisDebug || !this.isProduction) {
-      this.info(`[ANALYSIS] ${message}`, ...args);
-    }
+    this.info(`[ANALYSIS] ${message}`, ...args);
   }
   
-  // Production-specific logging for critical operations
+  // Enhanced logging for critical operations - always enabled
   static production(level: 'error' | 'warn' | 'info', message: string, ...args: any[]): void {
-    if (this.isProduction) {
+    if (this.isServer) {
       const timestamp = new Date().toISOString();
       const logMessage = `[PRODUCTION-${level.toUpperCase()}] ${timestamp} - ${message}`;
       
@@ -174,13 +176,13 @@ export class Logger {
     }
   }
   
-  // Special method for monitoring logs
+  // Special method for monitoring logs - always enabled
   static monitor(message: string, ...args: any[]): void {
     const formattedMessage = this.formatMessage('info', `[MONITOR] ${message}`);
     console.info(formattedMessage, ...args);
     
-    // Enhanced production logging for monitoring
-    if (this.isProduction) {
+    // Always write monitoring logs to stdout for visibility (server-side only)
+    if (this.isServer) {
       process.stdout.write(formattedMessage + '\n');
     }
   }

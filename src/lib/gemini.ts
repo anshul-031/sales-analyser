@@ -1,5 +1,9 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Logger } from './utils';
+import { DEFAULT_ANALYSIS_PARAMETERS } from './analysis-constants';
+
+// Re-export for backward compatibility
+export { DEFAULT_ANALYSIS_PARAMETERS };
 
 // Round-robin API key management
 class GeminiAPIKeyManager {
@@ -12,6 +16,12 @@ class GeminiAPIKeyManager {
 
   private loadAPIKeys() {
     try {
+      // Only load API keys on server side
+      if (typeof process === 'undefined' || !process.env) {
+        Logger.warn('[GeminiAPIKeyManager] Skipping API key loading on client side');
+        return;
+      }
+
       const apiKeysEnv = process.env.GOOGLE_GEMINI_API_KEYS;
       if (!apiKeysEnv) {
         Logger.warn('[GeminiAPIKeyManager] Warning: GOOGLE_GEMINI_API_KEYS not found in environment variables');
@@ -42,6 +52,11 @@ class GeminiAPIKeyManager {
   }
 
   getCurrentAPIKey(): string {
+    // Throw error if called on client side
+    if (typeof process === 'undefined' || !process.env) {
+      throw new Error('Gemini API keys are not available on client side for security reasons');
+    }
+
     if (this.apiKeys.length === 0) {
       throw new Error('No valid Google Gemini API keys configured. Please update GOOGLE_GEMINI_API_KEYS in .env file with a JSON array of API keys.');
     }
@@ -53,6 +68,11 @@ class GeminiAPIKeyManager {
   }
 
   getNextAPIKey(): string {
+    // Throw error if called on client side
+    if (typeof process === 'undefined' || !process.env) {
+      throw new Error('Gemini API keys are not available on client side for security reasons');
+    }
+
     if (this.apiKeys.length === 0) {
       throw new Error('No valid Google Gemini API keys configured. Please update GOOGLE_GEMINI_API_KEYS in .env file with a JSON array of API keys.');
     }
@@ -81,84 +101,11 @@ class GeminiAPIKeyManager {
 // Initialize the API key manager
 const apiKeyManager = new GeminiAPIKeyManager();
 
-// Default call analysis parameters
-export const DEFAULT_ANALYSIS_PARAMETERS = {
-  'communication_skills': {
-    name: 'Communication Skills',
-    description: 'Analyze the salesperson\'s communication effectiveness',
-    prompt: `Analyze the communication skills in this sales call recording. Evaluate:
-    1. Clarity and articulation
-    2. Active listening skills
-    3. Professional tone and language
-    4. Rapport building with the customer
-    5. Overall communication effectiveness
-    Provide a score from 1-10 and detailed feedback.`
-  },
-  'product_knowledge': {
-    name: 'Product Knowledge',
-    description: 'Evaluate the salesperson\'s product expertise',
-    prompt: `Evaluate the product knowledge demonstrated in this sales call. Assess:
-    1. Accuracy of product information provided
-    2. Ability to answer customer questions
-    3. Understanding of product benefits and features
-    4. Confidence in product presentation
-    5. Use of technical details appropriately
-    Provide a score from 1-10 and specific examples.`
-  },
-  'customer_needs_analysis': {
-    name: 'Customer Needs Analysis',
-    description: 'Assess how well the salesperson identified and addressed customer needs',
-    prompt: `Analyze how effectively the salesperson identified and addressed customer needs:
-    1. Quality of discovery questions asked
-    2. Understanding of customer pain points
-    3. Alignment of solution with customer needs
-    4. Personalization of the pitch
-    5. Addressing customer objections
-    Provide a score from 1-10 and recommendations.`
-  },
-  'closing_techniques': {
-    name: 'Closing Techniques',
-    description: 'Evaluate the effectiveness of closing and next steps',
-    prompt: `Evaluate the closing techniques and next steps in this sales call:
-    1. Natural progression to close
-    2. Handling of objections during close
-    3. Clear next steps defined
-    4. Follow-up plan established
-    5. Overall closing effectiveness
-    Provide a score from 1-10 and improvement suggestions.`
-  },
-  'overall_performance': {
-    name: 'Overall Performance',
-    description: 'Comprehensive analysis of the entire sales call',
-    prompt: `Provide a comprehensive analysis of this sales call including:
-    1. Overall call structure and flow
-    2. Achievement of call objectives
-    3. Customer engagement level
-    4. Professional presentation
-    5. Areas of strength and improvement
-    6. Likelihood of deal progression
-    Provide an overall score from 1-10 and detailed recommendations.`
-  },
-  'emotional_intelligence': {
-    name: 'Emotional Intelligence & Tone Analysis',
-    description: 'Evaluate emotional awareness and tone management throughout the call',
-    prompt: `Analyze the emotional intelligence and tone management in this sales call:
-    1. Emotional awareness and empathy demonstrated
-    2. Tone consistency and appropriateness
-    3. Ability to read and respond to customer emotions
-    4. Management of difficult or tense moments
-    5. Building emotional connection with the customer
-    6. Sentiment progression throughout the conversation
-    7. Professional composure under pressure
-    Provide a score from 1-10 and specific examples of emotional intelligence in action.`
-  }
-};
-
 export class GeminiAnalysisService {
   private getModelName(): string {
     // Get the model name from environment variable, fallback to default
-    const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite-preview-06-17';
-    return modelName;
+    const modelName = (typeof process !== 'undefined' && process.env) ? process.env.GEMINI_MODEL : 'gemini-2.5-flash-lite-preview-06-17';
+    return modelName || 'gemini-2.5-flash-lite-preview-06-17';
   }
 
   private getCurrentModel() {

@@ -4,7 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target, Edit3, Save, Plus, ChevronDown, ChevronUp, Loader2, Wind, Zap, Settings } from 'lucide-react';
 import { formatFileSize, isValidAudioFile } from '@/lib/utils';
-import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/gemini';
+import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/analysis-constants';
 import { MAX_FILE_SIZE, MAX_FILES, CHUNK_SIZE } from '@/lib/constants';
 import { 
   audioCompressor, 
