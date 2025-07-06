@@ -65,6 +65,9 @@ export function generateUniqueFilename(originalName: string): string {
 // Logger utility
 export class Logger {
   private static logLevel = process.env.LOG_LEVEL || 'info';
+  private static isProduction = process.env.NODE_ENV === 'production';
+  private static enableDatabaseLogs = process.env.ENABLE_DATABASE_LOGS === 'true';
+  private static enableAnalysisDebug = process.env.ENABLE_ANALYSIS_DEBUG === 'true';
   
   private static shouldLog(level: string): boolean {
     const levels = ['error', 'warn', 'info', 'debug'];
@@ -73,27 +76,112 @@ export class Logger {
     return messageLevel <= currentLevelIndex;
   }
   
+  private static formatMessage(level: string, message: string): string {
+    const timestamp = new Date().toISOString();
+    const env = this.isProduction ? 'PROD' : 'DEV';
+    return `[${level.toUpperCase()}] [${env}] ${timestamp} - ${message}`;
+  }
+  
   static error(message: string, ...args: any[]): void {
     if (this.shouldLog('error')) {
-      console.error(`[ERROR] ${new Date().toISOString()} - ${message}`, ...args);
+      const formattedMessage = this.formatMessage('error', message);
+      console.error(formattedMessage, ...args);
+      
+      // In production, also log to stderr for better visibility
+      if (this.isProduction) {
+        process.stderr.write(formattedMessage + '\n');
+        if (args.length > 0) {
+          process.stderr.write(`Additional info: ${JSON.stringify(args, null, 2)}\n`);
+        }
+      }
     }
   }
   
   static warn(message: string, ...args: any[]): void {
     if (this.shouldLog('warn')) {
-      console.warn(`[WARN] ${new Date().toISOString()} - ${message}`, ...args);
+      const formattedMessage = this.formatMessage('warn', message);
+      console.warn(formattedMessage, ...args);
+      
+      // Enhanced production logging
+      if (this.isProduction) {
+        process.stdout.write(formattedMessage + '\n');
+      }
     }
   }
   
   static info(message: string, ...args: any[]): void {
     if (this.shouldLog('info')) {
-      console.info(`[INFO] ${new Date().toISOString()} - ${message}`, ...args);
+      const formattedMessage = this.formatMessage('info', message);
+      console.info(formattedMessage, ...args);
+      
+      // Enhanced production logging
+      if (this.isProduction) {
+        process.stdout.write(formattedMessage + '\n');
+      }
     }
   }
   
   static debug(message: string, ...args: any[]): void {
     if (this.shouldLog('debug')) {
-      console.debug(`[DEBUG] ${new Date().toISOString()} - ${message}`, ...args);
+      const formattedMessage = this.formatMessage('debug', message);
+      console.debug(formattedMessage, ...args);
+    }
+  }
+  
+  // Special methods for database and analysis logging
+  static database(message: string, ...args: any[]): void {
+    if (this.enableDatabaseLogs || !this.isProduction) {
+      this.info(`[DATABASE] ${message}`, ...args);
+    }
+  }
+  
+  static analysis(message: string, ...args: any[]): void {
+    if (this.enableAnalysisDebug || !this.isProduction) {
+      this.info(`[ANALYSIS] ${message}`, ...args);
+    }
+  }
+  
+  // Production-specific logging for critical operations
+  static production(level: 'error' | 'warn' | 'info', message: string, ...args: any[]): void {
+    if (this.isProduction) {
+      const timestamp = new Date().toISOString();
+      const logMessage = `[PRODUCTION-${level.toUpperCase()}] ${timestamp} - ${message}`;
+      
+      switch (level) {
+        case 'error':
+          console.error(logMessage, ...args);
+          process.stderr.write(logMessage + '\n');
+          break;
+        case 'warn':
+          console.warn(logMessage, ...args);
+          process.stdout.write(logMessage + '\n');
+          break;
+        case 'info':
+          console.info(logMessage, ...args);
+          process.stdout.write(logMessage + '\n');
+          break;
+      }
+    }
+  }
+  
+  // Method to log system health and performance
+  static performance(operation: string, duration: number, details?: any): void {
+    const message = `Performance: ${operation} completed in ${duration}ms`;
+    if (duration > 10000) { // Log slow operations as warnings
+      this.warn(message, details);
+    } else {
+      this.info(message, details);
+    }
+  }
+  
+  // Special method for monitoring logs
+  static monitor(message: string, ...args: any[]): void {
+    const formattedMessage = this.formatMessage('info', `[MONITOR] ${message}`);
+    console.info(formattedMessage, ...args);
+    
+    // Enhanced production logging for monitoring
+    if (this.isProduction) {
+      process.stdout.write(formattedMessage + '\n');
     }
   }
 }

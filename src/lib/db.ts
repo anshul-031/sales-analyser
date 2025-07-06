@@ -8,12 +8,52 @@ const globalForPrisma = globalThis as unknown as {
 
 // Create Prisma client with proper configuration
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error'],
+  log: [
+    { emit: 'stdout', level: 'query' },
+    { emit: 'stdout', level: 'error' },
+    { emit: 'stdout', level: 'info' },
+    { emit: 'stdout', level: 'warn' },
+  ],
   datasources: {
     db: {
       url: process.env.DATABASE_URL,
     },
   },
+});
+
+// Enhanced logging middleware for database operations
+prisma.$use(async (params, next) => {
+  const start = Date.now();
+  const modelName = params.model || 'Unknown';
+  const action = params.action;
+  
+  Logger.debug(`[Database] Starting ${action} operation on ${modelName}`);
+  
+  try {
+    const result = await next(params);
+    const duration = Date.now() - start;
+    
+    Logger.info(`[Database] Completed ${action} on ${modelName} in ${duration}ms`);
+    
+    // Log specific operations
+    if (action === 'create') {
+      Logger.info(`[Database] Created ${modelName}:`, result?.id || 'N/A');
+    } else if (action === 'update') {
+      Logger.info(`[Database] Updated ${modelName}:`, result?.id || 'N/A');
+    } else if (action === 'delete') {
+      Logger.info(`[Database] Deleted ${modelName}:`, result?.id || 'N/A');
+    } else if (action === 'findMany') {
+      Logger.info(`[Database] Found ${Array.isArray(result) ? result.length : 'unknown'} ${modelName} records`);
+    } else if (action === 'findUnique' || action === 'findFirst') {
+      Logger.info(`[Database] Found ${modelName}:`, result?.id || (result ? 'record found' : 'not found'));
+    }
+    
+    return result;
+  } catch (error) {
+    const duration = Date.now() - start;
+    Logger.error(`[Database] Error in ${action} on ${modelName} after ${duration}ms:`, error);
+    throw error;
+  }
 });
 
 // In development, save the Prisma client to the global object
@@ -274,6 +314,25 @@ export class DatabaseStorage {
       return analyses;
     } catch (error) {
       Logger.error('[Database] Error getting analyses by upload ID:', error);
+      throw error;
+    }
+  }
+
+  static async getAnalysesByStatus(status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED') {
+    try {
+      const analyses = await prisma.analysis.findMany({
+        where: { status },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: true,
+          upload: true,
+          insights: true,
+          callMetrics: true,
+        },
+      });
+      return analyses;
+    } catch (error) {
+      Logger.error('[Database] Error getting analyses by status:', error);
       throw error;
     }
   }

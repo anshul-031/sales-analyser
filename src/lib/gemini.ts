@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Logger } from './utils';
 
 // Round-robin API key management
 class GeminiAPIKeyManager {
@@ -13,7 +14,7 @@ class GeminiAPIKeyManager {
     try {
       const apiKeysEnv = process.env.GOOGLE_GEMINI_API_KEYS;
       if (!apiKeysEnv) {
-        console.warn('[GeminiAPIKeyManager] Warning: GOOGLE_GEMINI_API_KEYS not found in environment variables');
+        Logger.warn('[GeminiAPIKeyManager] Warning: GOOGLE_GEMINI_API_KEYS not found in environment variables');
         return;
       }
 
@@ -21,7 +22,7 @@ class GeminiAPIKeyManager {
       this.apiKeys = JSON.parse(apiKeysEnv);
       
       if (!Array.isArray(this.apiKeys) || this.apiKeys.length === 0) {
-        console.warn('[GeminiAPIKeyManager] Warning: GOOGLE_GEMINI_API_KEYS should be a non-empty JSON array');
+        Logger.warn('[GeminiAPIKeyManager] Warning: GOOGLE_GEMINI_API_KEYS should be a non-empty JSON array');
         this.apiKeys = [];
         return;
       }
@@ -30,12 +31,12 @@ class GeminiAPIKeyManager {
       this.apiKeys = this.apiKeys.filter(key => key && typeof key === 'string' && key.trim().length > 0);
       
       if (this.apiKeys.length === 0) {
-        console.warn('[GeminiAPIKeyManager] Warning: No valid API keys found in GOOGLE_GEMINI_API_KEYS');
+        Logger.warn('[GeminiAPIKeyManager] Warning: No valid API keys found in GOOGLE_GEMINI_API_KEYS');
       } else {
-        console.log(`[GeminiAPIKeyManager] Loaded ${this.apiKeys.length} API key(s) for round-robin usage`);
+        Logger.info(`[GeminiAPIKeyManager] Loaded ${this.apiKeys.length} API key(s) for round-robin usage`);
       }
     } catch (error) {
-      console.error('[GeminiAPIKeyManager] Error parsing GOOGLE_GEMINI_API_KEYS:', error);
+      Logger.error('[GeminiAPIKeyManager] Error parsing GOOGLE_GEMINI_API_KEYS:', error);
       this.apiKeys = [];
     }
   }
@@ -46,7 +47,7 @@ class GeminiAPIKeyManager {
     }
 
     const currentKey = this.apiKeys[this.currentIndex];
-    console.log(`[GeminiAPIKeyManager] Using API key ${this.currentIndex + 1}/${this.apiKeys.length} (${currentKey.substring(0, 10)}...)`);
+    Logger.debug(`[GeminiAPIKeyManager] Using API key ${this.currentIndex + 1}/${this.apiKeys.length} (${currentKey.substring(0, 10)}...)`);
     
     return currentKey;
   }
@@ -57,7 +58,7 @@ class GeminiAPIKeyManager {
     }
 
     const currentKey = this.apiKeys[this.currentIndex];
-    console.log(`[GeminiAPIKeyManager] Using API key ${this.currentIndex + 1}/${this.apiKeys.length} (${currentKey.substring(0, 10)}...)`);
+    Logger.debug(`[GeminiAPIKeyManager] Using API key ${this.currentIndex + 1}/${this.apiKeys.length} (${currentKey.substring(0, 10)}...)`);
     
     // Automatically rotate to next key for round-robin usage
     this.rotateToNextKey();
@@ -68,7 +69,7 @@ class GeminiAPIKeyManager {
   rotateToNextKey(): void {
     if (this.apiKeys.length > 0) {
       this.currentIndex = (this.currentIndex + 1) % this.apiKeys.length;
-      console.log(`[GeminiAPIKeyManager] Rotated to API key ${this.currentIndex + 1}/${this.apiKeys.length} for next request`);
+      Logger.debug(`[GeminiAPIKeyManager] Rotated to API key ${this.currentIndex + 1}/${this.apiKeys.length} for next request`);
     }
   }
 
@@ -170,45 +171,99 @@ export class GeminiAnalysisService {
 
   private async makeAPICallWithRetry<T>(
     operation: () => Promise<T>,
-    maxRetries: number = apiKeyManager.getKeyCount()
+    maxRetries: number = apiKeyManager.getKeyCount(),
+    operationName: string = 'API Call'
   ): Promise<T> {
     let lastError: Error | null = null;
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        console.log(`[GeminiService] API call attempt ${attempt + 1}/${maxRetries}`);
-        return await operation();
+        Logger.analysis(`${operationName} attempt ${attempt + 1}/${maxRetries}`);
+        const startTime = Date.now();
+        
+        const result = await operation();
+        
+        const duration = Date.now() - startTime;
+        Logger.performance(`${operationName}`, duration);
+        
+        return result;
       } catch (error) {
         lastError = error as Error;
-        console.error(`[GeminiService] API call failed on attempt ${attempt + 1}:`, error);
+        Logger.error(`${operationName} failed on attempt ${attempt + 1}:`, error);
         
-        // Check if it's a rate limit or quota error that might benefit from key rotation
-        if (error instanceof Error && (
-          error.message.includes('QUOTA_EXCEEDED') ||
-          error.message.includes('RATE_LIMIT_EXCEEDED') ||
-          error.message.includes('429') ||
-          error.message.includes('Too Many Requests')
-        )) {
-          console.log('[GeminiService] Rate limit detected, will try next API key...');
+        // Enhanced error categorization for production debugging
+        if (error instanceof Error) {
+          const errorMessage = error.message.toLowerCase();
           
-          // Add a small delay before retry
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } else if (attempt === maxRetries - 1) {
-          // Don't retry for non-rate-limit errors on the last attempt
+          if (errorMessage.includes('quota_exceeded') || 
+              errorMessage.includes('rate_limit_exceeded') ||
+              errorMessage.includes('429') ||
+              errorMessage.includes('too many requests')) {
+            Logger.warn(`[GeminiService] Rate limit detected on attempt ${attempt + 1}, trying next API key...`);
+            
+            // Add exponential backoff for rate limits
+            const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            
+          } else if (errorMessage.includes('permission_denied') || 
+                     errorMessage.includes('api key') ||
+                     errorMessage.includes('authentication')) {
+            Logger.error(`[GeminiService] Authentication error: ${error.message}`);
+            // Don't retry auth errors
+            break;
+            
+          } else if (errorMessage.includes('timeout') || 
+                     errorMessage.includes('timed out')) {
+            Logger.warn(`[GeminiService] Timeout error on attempt ${attempt + 1}: ${error.message}`);
+            
+            // For timeout errors, add longer delay
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+          } else if (errorMessage.includes('invalid') || 
+                     errorMessage.includes('bad request')) {
+            Logger.error(`[GeminiService] Invalid request error: ${error.message}`);
+            // Don't retry invalid requests
+            break;
+            
+          } else {
+            Logger.warn(`[GeminiService] Unknown error on attempt ${attempt + 1}: ${error.message}`);
+            // Add short delay for unknown errors
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          
+          // Production logging for critical errors
+          if (process.env.NODE_ENV === 'production') {
+            Logger.production('error', `Gemini API Error - Attempt ${attempt + 1}/${maxRetries}`, {
+              operationName,
+              errorMessage: error.message,
+              errorType: errorMessage.includes('quota') ? 'QUOTA' : 
+                         errorMessage.includes('auth') ? 'AUTH' : 
+                         errorMessage.includes('timeout') ? 'TIMEOUT' : 'UNKNOWN'
+            });
+          }
+        }
+        
+        // If this is the last attempt or a non-retryable error, don't continue
+        if (attempt === maxRetries - 1) {
           break;
-        } else {
-          // For other errors, add a small delay before retry
-          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
     }
     
-    throw lastError || new Error('All API calls failed');
+    // Log final failure
+    Logger.production('error', `Gemini API Call Failed After All Retries`, {
+      operationName,
+      maxRetries,
+      finalError: lastError?.message || 'Unknown error',
+      timestamp: new Date().toISOString()
+    });
+    
+    throw lastError || new Error(`${operationName} failed after ${maxRetries} attempts`);
   }
 
   constructor() {
     const modelName = this.getModelName();
-    console.log(`[GeminiService] Initialized with ${apiKeyManager.getKeyCount()} API key(s) and ${modelName} model`);
+    Logger.info(`[GeminiService] Initialized with ${apiKeyManager.getKeyCount()} API key(s) and ${modelName} model`);
   }
 
   private async makeAPICallWithJsonResponse<T>(
@@ -258,7 +313,7 @@ export class GeminiAnalysisService {
    * Transcribe audio content using Gemini API
    */
   async transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {
-    console.log(`[GeminiService] Starting audio transcription, size: ${audioBuffer.length} bytes`);
+    Logger.analysis(`Starting audio transcription, size: ${audioBuffer.length} bytes`);
     
     const base64Audio = audioBuffer.toString('base64');
     const prompt = `Please transcribe this audio file with the following requirements:
@@ -316,7 +371,7 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
         return response.text();
       });
       
-      console.log(`[GeminiService] Transcription completed, length: ${transcription.length} characters`);
+      Logger.analysis(`Transcription completed, length: ${transcription.length} characters`);
       
       // Extract JSON from response
       const jsonMatch = transcription.match(/\{[\s\S]*\}/);

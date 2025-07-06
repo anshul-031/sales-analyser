@@ -4,6 +4,11 @@ import { DatabaseStorage } from '@/lib/db';
 import { geminiService } from '@/lib/gemini';
 import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getAuthenticatedUser } from '@/lib/auth';
+import { LoggingConfig, ProductionMonitoring, ErrorCategories, ErrorCategory } from '@/lib/logging-config';
+import { analysisMonitor } from '@/lib/analysis-monitor';
+
+// Ensure monitoring is started
+analysisMonitor.startMonitoring();
 
 /**
  * @swagger
@@ -63,21 +68,36 @@ const r2 = new S3Client({
 });
 
 // Enhanced timeout and retry mechanism for Gemini API calls
-const withEnhancedTimeout = <T>(promise: Promise<T>, timeoutMs: number, operationName: string, requestId: string): Promise<T> => {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      const timeoutId = setTimeout(() => {
-        Logger.error(`[Analyze API] [${requestId}] ${operationName} timed out after ${timeoutMs}ms`);
-        reject(new Error(`${operationName} timed out after ${timeoutMs}ms. This may indicate API rate limiting or network issues.`));
-      }, timeoutMs);
-      
-      // Log a warning at 75% of timeout
-      setTimeout(() => {
-        Logger.warn(`[Analyze API] [${requestId}] ${operationName} taking longer than expected - ${timeoutMs * 0.75}ms elapsed`);
-      }, timeoutMs * 0.75);
-    })
-  ]);
+const withEnhancedTimeout = <T>(
+  promise: Promise<T>, 
+  timeoutMs: number, 
+  operationName: string,
+  requestId: string = 'unknown'
+): Promise<T> => {
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    setTimeout(() => {
+      Logger.production('error', `Operation Timeout: ${operationName}`, {
+        operation: operationName,
+        timeoutMs,
+        requestId,
+        timestamp: new Date().toISOString()
+      });
+      reject(new Error(`${operationName} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  // Enhanced monitoring during operation
+  const monitoredPromise = Promise.race([promise, timeoutPromise]);
+  
+  // Log operation start
+  Logger.analysis(`Starting ${operationName} with ${timeoutMs}ms timeout`);
+  
+  // Log a warning at 75% of timeout
+  setTimeout(() => {
+    Logger.warn(`[Analyze API] [${requestId}] ${operationName} taking longer than expected - ${Math.round(timeoutMs * 0.75)}ms elapsed`);
+  }, timeoutMs * 0.75);
+  
+  return monitoredPromise;
 };
 
 // Add heartbeat logging for long-running operations
@@ -106,17 +126,8 @@ const logSystemHealth = (requestId: string) => {
   });
 };
 
-// Add timeout wrapper for API calls
-const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> => {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`${operationName} timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-    })
-  ]);
-};
+// Get timeout values from environment or use defaults
+const getTimeouts = () => LoggingConfig.timeouts;
 
 export async function POST(request: NextRequest) {
   const requestStartTime = Date.now();
@@ -243,6 +254,15 @@ export async function POST(request: NextRequest) {
 
         analyses.push(analysis);
         successCount++;
+
+        // Register analysis for monitoring
+        analysisMonitor.registerAnalysis({
+          id: analysis.id,
+          userId: user.id,
+          filename: upload.filename,
+          analysisType: analysis.analysisType,
+          requestId
+        });
 
         Logger.info(`[Analyze API] [${requestId}] Created analysis record:`, {
           analysisId: analysis.id,
@@ -417,6 +437,9 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     await DatabaseStorage.updateAnalysis(analysisId, {
       status: 'PROCESSING'
     });
+    
+    // Update monitoring stage
+    analysisMonitor.updateAnalysisStage(analysisId, 'PROCESSING');
 
     Logger.info(`[Analyze API] [${requestId}] Reading audio file from R2:`, {
       filename: upload.filename,
@@ -483,6 +506,9 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       mimeType
     });
     
+    // Update monitoring stage
+    analysisMonitor.updateAnalysisStage(analysisId, 'TRANSCRIBING');
+    
     const transcriptionStartTime = Date.now();
     const transcriptionHeartbeat = createHeartbeat(requestId, 'Transcription');
     
@@ -490,10 +516,11 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     let analysisResult: any;
     
     try {
-      transcription = await withTimeout(
+      transcription = await withEnhancedTimeout(
         geminiService.transcribeAudio(audioBuffer, upload.mimeType),
-        300000, // 5 minutes timeout for transcription
-        'Transcription'
+        getTimeouts().transcription,
+        'Transcription',
+        requestId
       );
       transcriptionHeartbeat();
       
@@ -509,12 +536,15 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       const analysisStartTime = Date.now();
       const analysisHeartbeat = createHeartbeat(requestId, 'Analysis');
       
+      // Update monitoring stage
+      analysisMonitor.updateAnalysisStage(analysisId, 'ANALYZING');
+      
       try {
         if (analysis.analysisType === 'CUSTOM' && analysis.customPrompt) {
           Logger.info(`[Analyze API] [${requestId}] Starting custom analysis with prompt`);
           analysisResult = await withEnhancedTimeout(
             geminiService.analyzeWithCustomPrompt(transcription, analysis.customPrompt),
-            600000, // 10 minutes timeout for custom analysis
+            getTimeouts().customAnalysis,
             'Custom Analysis',
             requestId
           );
@@ -524,7 +554,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
           const parameters = analysis.customParameters as { id: string; name: string; description: string; prompt: string; enabled: boolean; }[];
           analysisResult = await withEnhancedTimeout(
             geminiService.analyzeWithCustomParameters(transcription, parameters),
-            900000, // 15 minutes timeout for parameter analysis (multiple API calls)
+            getTimeouts().analysis,
             'Parameter Analysis',
             requestId
           );
@@ -532,7 +562,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
           Logger.info(`[Analyze API] [${requestId}] Starting default analysis`);
           analysisResult = await withEnhancedTimeout(
             geminiService.analyzeWithDefaultParameters(transcription),
-            600000, // 10 minutes timeout for default analysis
+            getTimeouts().customAnalysis,
             'Default Analysis',
             requestId
           );
@@ -584,6 +614,9 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       transcription,
     });
 
+    // Update monitoring - analysis completed
+    analysisMonitor.completeAnalysis(analysisId, 'COMPLETED');
+
     Logger.info(`[Analyze API] [${requestId}] Extracting and storing insights:`, analysisId);
     // Extract and store insights
     await extractAndStoreInsights(analysisId, analysisResult, requestId);
@@ -603,6 +636,19 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       totalDuration: analysisDuration + 'ms'
     });
 
+    // Log successful operation metrics
+    ProductionMonitoring.logOperationMetrics(
+      'background_analysis',
+      analysisDuration,
+      true,
+      {
+        filename: upload.filename,
+        analysisId,
+        analysisType: analysis?.analysisType,
+        transcriptionLength: transcription?.length
+      }
+    );
+
   } catch (error) {
     Logger.error(`[Analyze API] [${requestId}] Background analysis failed for`, analysisId + ':', error);
     
@@ -610,31 +656,67 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     const analysisDuration = analysisEndTime - analysisStartTime;
     
     // Enhanced error categorization and logging
-    let errorCategory = 'UNKNOWN';
+    let errorCategory: ErrorCategory = ErrorCategories.UNKNOWN;
     let errorMessage = 'Unknown error occurred';
     
     if (error instanceof Error) {
       errorMessage = error.message;
+      const errorMsgLower = error.message.toLowerCase();
       
-      if (error.message.includes('timeout') || error.message.includes('timed out')) {
-        errorCategory = 'TIMEOUT';
-        Logger.error(`[Analyze API] [${requestId}] Analysis timed out after ${analysisDuration}ms for:`, upload.filename);
-      } else if (error.message.includes('QUOTA_EXCEEDED') || error.message.includes('429') || error.message.includes('Too Many Requests')) {
-        errorCategory = 'RATE_LIMIT';
-        Logger.error(`[Analyze API] [${requestId}] Rate limit exceeded for:`, upload.filename);
-      } else if (error.message.includes('API key') || error.message.includes('authentication') || error.message.includes('PERMISSION_DENIED')) {
-        errorCategory = 'AUTH_ERROR';
-        Logger.error(`[Analyze API] [${requestId}] Authentication error for:`, upload.filename);
-      } else if (error.message.includes('File not found') || error.message.includes('R2')) {
-        errorCategory = 'FILE_ERROR';
-        Logger.error(`[Analyze API] [${requestId}] File access error for:`, upload.filename);
-      } else if (error.message.includes('JSON') || error.message.includes('parse')) {
-        errorCategory = 'PARSING_ERROR';
-        Logger.error(`[Analyze API] [${requestId}] Response parsing error for:`, upload.filename);
+      if (errorMsgLower.includes('timeout') || errorMsgLower.includes('timed out')) {
+        errorCategory = ErrorCategories.TIMEOUT;
+        Logger.production('error', `Analysis timed out after ${analysisDuration}ms`, {
+          filename: upload.filename,
+          analysisId,
+          duration: analysisDuration
+        });
+      } else if (errorMsgLower.includes('quota_exceeded') || errorMsgLower.includes('429') || errorMsgLower.includes('too many requests')) {
+        errorCategory = ErrorCategories.RATE_LIMIT;
+        Logger.production('error', `Rate limit exceeded`, {
+          filename: upload.filename,
+          analysisId
+        });
+      } else if (errorMsgLower.includes('api key') || errorMsgLower.includes('authentication') || errorMsgLower.includes('permission_denied')) {
+        errorCategory = ErrorCategories.AUTH_ERROR;
+        Logger.production('error', `Authentication error`, {
+          filename: upload.filename,
+          analysisId
+        });
+      } else if (errorMsgLower.includes('file not found') || errorMsgLower.includes('r2')) {
+        errorCategory = ErrorCategories.FILE_ERROR;
+        Logger.production('error', `File access error`, {
+          filename: upload.filename,
+          analysisId,
+          fileUrl: upload.fileUrl
+        });
+      } else if (errorMsgLower.includes('json') || errorMsgLower.includes('parse')) {
+        errorCategory = ErrorCategories.PARSING_ERROR;
+        Logger.production('error', `Response parsing error`, {
+          filename: upload.filename,
+          analysisId
+        });
+      } else if (errorMsgLower.includes('network') || errorMsgLower.includes('connection')) {
+        errorCategory = ErrorCategories.NETWORK_ERROR;
+        Logger.production('error', `Network connectivity error`, {
+          filename: upload.filename,
+          analysisId
+        });
       } else {
-        errorCategory = 'API_ERROR';
-        Logger.error(`[Analyze API] [${requestId}] API error for:`, upload.filename);
+        errorCategory = ErrorCategories.API_ERROR;
+        Logger.production('error', `API error`, {
+          filename: upload.filename,
+          analysisId,
+          errorMessage: error.message
+        });
       }
+      
+      // Use the new categorized error logging
+      ProductionMonitoring.logCategorizedError(errorCategory, error, {
+        filename: upload.filename,
+        analysisId,
+        analysisDuration,
+        operation: 'background_analysis'
+      });
     }
     
     Logger.error(`[Analyze API] [${requestId}] Error details:`, {
@@ -646,12 +728,28 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       stackTrace: error instanceof Error ? error.stack : 'No stack trace available'
     });
     
+    // Log operation metrics
+    ProductionMonitoring.logOperationMetrics(
+      'background_analysis',
+      analysisDuration,
+      false,
+      {
+        filename: upload.filename,
+        analysisId,
+        errorCategory,
+        errorMessage
+      }
+    );
+    
     // Update analysis with error using enhanced storage with retry
     await DatabaseStorage.updateAnalysis(analysisId, {
       status: 'FAILED',
       errorMessage: `${errorCategory}: ${errorMessage}`,
       analysisDuration,
     });
+
+    // Update monitoring - analysis failed
+    analysisMonitor.completeAnalysis(analysisId, 'FAILED');
 
     // Clean up the uploaded file after failed analysis (if enabled)
     const autoDeleteFiles = process.env.AUTO_DELETE_FILES === 'true';
