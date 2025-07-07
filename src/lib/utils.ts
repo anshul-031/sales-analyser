@@ -1,6 +1,18 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { MAX_FILE_SIZE } from "@/lib/constants"
+import { 
+  getAnalysisStatusColorClasses,
+  getAnalysisStatusIcon,
+  isAnalysisCompleted,
+  isAnalysisProcessing,
+  isAnalysisPending,
+  isAnalysisFailed,
+  isAnalysisInProgress,
+  isAnalysisFinished,
+  normalizeAnalysisStatus,
+  getAnalysisStatusDisplayName
+} from "@/types/enums"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -224,34 +236,28 @@ export function validateFileSize(size: number, maxSize: number = MAX_FILE_SIZE):
   return size <= maxSize;
 }
 
-// Analysis status helpers
+// Analysis status helpers - Use enum-based functions for consistency
 export function getStatusColor(status: string): string {
-  switch (status.toLowerCase()) {
-    case 'completed':
-      return 'text-green-600 bg-green-50';
-    case 'processing':
-      return 'text-blue-600 bg-blue-50';
-    case 'failed':
-      return 'text-red-600 bg-red-50';
-    case 'pending':
-    default:
-      return 'text-yellow-600 bg-yellow-50';
-  }
+  return getAnalysisStatusColorClasses(status);
 }
 
 export function getStatusIcon(status: string): string {
-  switch (status.toLowerCase()) {
-    case 'completed':
-      return '✓';
-    case 'processing':
-      return '⟳';
-    case 'failed':
-      return '✗';
-    case 'pending':
-    default:
-      return '○';
-  }
+  return getAnalysisStatusIcon(status);
 }
+
+// Export enum-based utility functions for better status handling
+export {
+  isAnalysisCompleted,
+  isAnalysisProcessing,
+  isAnalysisPending,
+  isAnalysisFailed,
+  isAnalysisInProgress,
+  isAnalysisFinished,
+  normalizeAnalysisStatus,
+  getAnalysisStatusDisplayName,
+  getAnalysisStatusColorClasses,
+  getAnalysisStatusIcon
+};
 
 // Adaptive timeout utilities for long-running operations
 export class AdaptiveTimeout {

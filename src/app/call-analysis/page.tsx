@@ -17,7 +17,11 @@ import {
   XCircle,
   Loader2
 } from 'lucide-react';
-import { Logger } from '@/lib/utils';
+import { 
+  Logger,
+  isAnalysisCompleted,
+  isAnalysisFailed 
+} from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 
@@ -206,7 +210,7 @@ export default function CallAnalysisPage() {
       // Get selected recordings that have completed analyses
       const selectedRecordingData = filteredRecordings.filter(r => 
         selectedRecordings.has(r.id) && 
-        r.analyses?.[0]?.status === 'COMPLETED'
+        isAnalysisCompleted(r.analyses?.[0]?.status)
       );
 
       if (selectedRecordingData.length === 0) {
@@ -479,10 +483,10 @@ export default function CallAnalysisPage() {
                             <h3 className="text-sm font-medium text-gray-900 truncate">
                               {recording.originalName}
                             </h3>
-                            {recording.analyses?.[0]?.status === 'completed' && (
+                            {isAnalysisCompleted(recording.analyses?.[0]?.status) && (
                               <CheckCircle className="w-4 h-4 text-green-500" />
                             )}
-                            {recording.analyses?.[0]?.status === 'failed' && (
+                            {isAnalysisFailed(recording.analyses?.[0]?.status) && (
                               <XCircle className="w-4 h-4 text-red-500" />
                             )}
                           </div>

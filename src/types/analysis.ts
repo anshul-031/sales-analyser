@@ -2,30 +2,18 @@
  * TypeScript interfaces for analysis-related objects in the Sales Analyser application
  */
 
+import { 
+  AnalysisStatus, 
+  AnalysisType, 
+  SentimentType, 
+  ToneType, 
+  ConfidenceLevel, 
+  EngagementLevel 
+} from './enums';
+
 // ============================================================================
 // Base Analysis Types
 // ============================================================================
-
-export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-
-export type AnalysisType = 'default' | 'custom' | 'parameters';
-
-export type SentimentType = 'positive' | 'negative' | 'neutral' | 'mixed';
-
-export type ToneType = 
-  | 'professional' 
-  | 'friendly' 
-  | 'aggressive' 
-  | 'uncertain' 
-  | 'confident' 
-  | 'frustrated' 
-  | 'enthusiastic' 
-  | 'calm'
-  | 'neutral';
-
-export type ConfidenceLevel = 'low' | 'medium' | 'high';
-
-export type EngagementLevel = 'low' | 'medium' | 'high';
 
 // ============================================================================
 // Transcription Related Types

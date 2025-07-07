@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import { Logger } from './utils';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { AnalysisStatus, isAnalysisCompleted, isAnalysisFailed } from '../types/enums';
 
 const r2 = new S3Client({
   region: 'auto',
@@ -225,7 +226,7 @@ export class FileStorage {
   static async cleanupCompletedAnalysis(analysisId: string): Promise<void> {
     try {
       const analysis = await this.getAnalysisById(analysisId);
-      if (!analysis || analysis.status !== 'COMPLETED') {
+      if (!analysis || !isAnalysisCompleted(analysis.status)) {
         return;
       }
 
@@ -242,7 +243,7 @@ export class FileStorage {
   static async cleanupFailedAnalysis(analysisId: string): Promise<void> {
     try {
       const analysis = await this.getAnalysisById(analysisId);
-      if (!analysis || analysis.status !== 'FAILED') {
+      if (!analysis || !isAnalysisFailed(analysis.status)) {
         return;
       }
 
@@ -299,8 +300,8 @@ export class FileStorage {
     return {
       totalUploads: uploads.length,
       totalAnalyses: analyses.length,
-      completedAnalyses: analyses.filter(a => a.status === 'COMPLETED').length,
-      failedAnalyses: analyses.filter(a => a.status === 'FAILED').length,
+      completedAnalyses: analyses.filter(a => isAnalysisCompleted(a.status)).length,
+      failedAnalyses: analyses.filter(a => isAnalysisFailed(a.status)).length,
     };
   }
 }

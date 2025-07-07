@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, AnalysisStatus as PrismaAnalysisStatus } from '@prisma/client';
 import { Logger } from './utils';
 
 // Global variable to store the Prisma client instance
@@ -318,7 +318,7 @@ export class DatabaseStorage {
     }
   }
 
-  static async getAnalysesByStatus(status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED') {
+  static async getAnalysesByStatus(status: PrismaAnalysisStatus) {
     try {
       const analyses = await prisma.analysis.findMany({
         where: { status },

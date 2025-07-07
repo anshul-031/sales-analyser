@@ -16,7 +16,17 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
-import { Logger } from '@/lib/utils';
+import { 
+  Logger,
+  isAnalysisCompleted,
+  isAnalysisProcessing,
+  isAnalysisPending,
+  isAnalysisFailed,
+  isAnalysisInProgress,
+  isAnalysisFinished,
+  normalizeAnalysisStatus,
+  getAnalysisStatusDisplayName
+} from '@/lib/utils';
 import AnalysisDisplay from '@/components/AnalysisDisplay';
 import Chatbot from '@/components/Chatbot';
 import { usePolling } from '@/lib/usePolling';
@@ -64,10 +74,7 @@ export default function CallHistoryPage() {
     if (!selectedRecording?.analyses?.length) return null;
     
     const analysis = selectedRecording.analyses[0];
-    const isInProgress = analysis.status === 'processing' || 
-                        analysis.status === 'PROCESSING' || 
-                        analysis.status === 'pending' ||
-                        analysis.status === 'PENDING';
+    const isInProgress = isAnalysisInProgress(analysis.status);
     
     return {
       id: analysis.id,
@@ -239,7 +246,7 @@ export default function CallHistoryPage() {
           // Auto-load data for the first recording if needed
           if (firstRecording.analyses?.length) {
             const analysis = firstRecording.analyses[0];
-            const isCompleted = analysis.status === 'completed' || analysis.status === 'COMPLETED';
+            const isCompleted = isAnalysisCompleted(analysis.status);
             
             if (isCompleted && !analysis.analysisResult && !alreadyLoadedIds.has(analysis.id)) {
               console.log('[CallHistory] Auto-loading data for initially selected recording');
@@ -293,7 +300,7 @@ export default function CallHistoryPage() {
     // Auto-load data if needed for the current tab (with a stable reference)
     if (recording.analyses?.length) {
       const analysis = recording.analyses[0];
-      const isCompleted = analysis.status === 'completed' || analysis.status === 'COMPLETED';
+      const isCompleted = isAnalysisCompleted(analysis.status);
       
       console.log(`[CallHistory-${selectionId}] Analysis info - ID: ${analysis.id}, Status: ${analysis.status}, isCompleted: ${isCompleted}`);
       console.log(`[CallHistory-${selectionId}] Has analysis result: ${!!analysis.analysisResult}, Has transcription: ${!!analysis.transcription}`);
@@ -531,7 +538,7 @@ export default function CallHistoryPage() {
     // Auto-load data when switching to tabs that need it
     if (selectedRecording?.analyses?.length) {
       const analysis = selectedRecording.analyses[0];
-      const isCompleted = analysis.status === 'completed' || analysis.status === 'COMPLETED';
+      const isCompleted = isAnalysisCompleted(analysis.status);
       
       if (isCompleted && !loadedAnalysisIds.has(analysis.id)) {
         if (tab === 'analysis' && !analysis.analysisResult) {
@@ -773,13 +780,16 @@ export default function CallHistoryPage() {
                     console.log(`[CallHistory-RENDER-${renderId}] Analysis result content:`, analysis.analysisResult);
                   }
                   
-                  // Handle both uppercase and lowercase status values for compatibility
-                  const isCompleted = analysis.status === 'completed' || analysis.status === 'COMPLETED';
-                  const isFailed = analysis.status === 'failed' || analysis.status === 'FAILED';
-                  const isPending = analysis.status === 'pending' || analysis.status === 'PENDING';
-                  const isProcessing = analysis.status === 'processing' || analysis.status === 'PROCESSING';
+                  // Handle status checking using enum-based utility functions
+                  const isCompleted = isAnalysisCompleted(analysis.status);
+                  const isFailed = isAnalysisFailed(analysis.status);
+                  const isPending = isAnalysisPending(analysis.status);
+                  const isProcessing = isAnalysisProcessing(analysis.status);
+                  const inProgress = isAnalysisInProgress(analysis.status);
+                  const finished = isAnalysisFinished(analysis.status);
                   
-                  console.log(`[CallHistory-RENDER-${renderId}] Status checks - isCompleted:`, isCompleted, 'isFailed:', isFailed, 'isPending:', isPending, 'isProcessing:', isProcessing);
+                  console.log(`[CallHistory-RENDER-${renderId}] Status checks - isCompleted:`, isCompleted, 'isFailed:', isFailed, 'isPending:', isPending, 'isProcessing:', isProcessing, 'inProgress:', inProgress, 'finished:', finished);
+                  console.log(`[CallHistory-RENDER-${renderId}] Raw status:`, analysis.status, 'Normalized:', normalizeAnalysisStatus(analysis.status));
                   
                   if (isCompleted) {
                     console.log(`[CallHistory-RENDER-${renderId}] Analysis is completed, checking active tab...`);
@@ -1387,10 +1397,9 @@ export default function CallHistoryPage() {
                         </p>
                       </div>
                     );
-                  } else {
+                  } else if (inProgress) {
                     console.log('[CallHistory] Analysis in progress, status:', analysis.status);
-                    console.log('[CallHistory] Expected status should be pending or processing, but got:', analysis.status);
-                    console.log('[CallHistory] Status check results - isPending:', isPending, 'isProcessing:', isProcessing);
+                    console.log('[CallHistory] Status check results - isPending:', isPending, 'isProcessing:', isProcessing, 'inProgress:', inProgress);
                     if (activeTab === 'chat') {
                       return (
                         <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full">

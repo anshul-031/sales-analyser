@@ -1,6 +1,8 @@
 import { Logger } from './utils';
 import { DatabaseStorage } from './db';
 import { LoggingConfig } from './logging-config';
+import { AnalysisStatus } from '@/types/enums';
+import { AnalysisStatus as PrismaAnalysisStatus } from '@prisma/client';
 
 // Global analysis tracker for monitoring in-progress analyses
 interface AnalysisProgress {
@@ -8,7 +10,7 @@ interface AnalysisProgress {
   userId: string;
   filename: string;
   startTime: number;
-  stage: 'PENDING' | 'PROCESSING' | 'TRANSCRIBING' | 'ANALYZING' | 'COMPLETED' | 'FAILED';
+  stage: AnalysisStatus;
   lastUpdateTime: number;
   analysisType: string;
   requestId?: string;
@@ -87,7 +89,7 @@ class AnalysisMonitor {
       userId: analysis.userId,
       filename: analysis.filename,
       startTime: Date.now(),
-      stage: 'PENDING',
+      stage: AnalysisStatus.PENDING,
       lastUpdateTime: Date.now(),
       analysisType: analysis.analysisType,
       requestId: analysis.requestId,
@@ -106,7 +108,7 @@ class AnalysisMonitor {
   /**
    * Update analysis stage
    */
-  updateAnalysisStage(analysisId: string, stage: AnalysisProgress['stage']): void {
+  updateAnalysisStage(analysisId: string, stage: AnalysisStatus): void {
     const progress = this.inProgressAnalyses.get(analysisId);
     if (progress) {
       progress.stage = stage;
@@ -124,7 +126,7 @@ class AnalysisMonitor {
   /**
    * Remove analysis from monitoring (when completed or failed)
    */
-  completeAnalysis(analysisId: string, finalStage: 'COMPLETED' | 'FAILED'): void {
+  completeAnalysis(analysisId: string, finalStage: AnalysisStatus.COMPLETED | AnalysisStatus.FAILED): void {
     const progress = this.inProgressAnalyses.get(analysisId);
     if (progress) {
       const totalTime = Date.now() - progress.startTime;
@@ -216,8 +218,8 @@ class AnalysisMonitor {
   private async syncWithDatabase(): Promise<void> {
     try {
       // Get all processing analyses from database
-      const processingAnalyses = await DatabaseStorage.getAnalysesByStatus('PROCESSING');
-      const pendingAnalyses = await DatabaseStorage.getAnalysesByStatus('PENDING');
+      const processingAnalyses = await DatabaseStorage.getAnalysesByStatus(PrismaAnalysisStatus.PROCESSING);
+      const pendingAnalyses = await DatabaseStorage.getAnalysesByStatus(PrismaAnalysisStatus.PENDING);
       
       const dbAnalyses = [...processingAnalyses, ...pendingAnalyses];
       
@@ -229,7 +231,7 @@ class AnalysisMonitor {
           this.registerAnalysis({
             id: dbAnalysis.id,
             userId: dbAnalysis.userId,
-            filename: dbAnalysis.upload?.filename || 'unknown',
+            filename: (dbAnalysis as any).upload?.filename || (dbAnalysis as any).upload?.originalName || 'unknown',
             analysisType: dbAnalysis.analysisType,
             requestId: 'sync'
           });

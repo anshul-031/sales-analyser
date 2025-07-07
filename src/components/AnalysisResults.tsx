@@ -2,7 +2,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Download, Eye, EyeOff, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, TrendingDown, Target, Lightbulb, Star, Award, MessageCircle, FileText, Heart, Frown, Smile, Meh, Users, Brain, Activity, Gauge } from 'lucide-react';
-import { formatDate, getStatusColor, getStatusIcon } from '@/lib/utils';
+import { 
+  formatDate, 
+  getStatusColor, 
+  getStatusIcon,
+  isAnalysisCompleted,
+  isAnalysisProcessing,
+  isAnalysisPending,
+  isAnalysisFailed,
+  isAnalysisInProgress,
+  getAnalysisStatusDisplayName
+} from '@/lib/utils';
 import Chatbot from './Chatbot';
 import type { 
   AnalysisResultsProps, 
@@ -83,7 +93,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
   // Auto-refresh for pending/processing analyses
   useEffect(() => {
     const hasPendingAnalyses = analyses.some(a => 
-      a.status === 'pending' || a.status === 'processing'
+      isAnalysisInProgress(a.status)
     );
 
     if (hasPendingAnalyses) {
@@ -796,7 +806,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                     <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
                       {analysis.analysisType === 'custom' ? 'Custom Analysis' : 'Comprehensive Analysis'}
                     </span>
-                    {analysis.status === 'completed' && analysis.analysisResult && hasOverallScore(analysis.analysisResult) && (
+                    {isAnalysisCompleted(analysis.status) && analysis.analysisResult && hasOverallScore(analysis.analysisResult) && (
                       <span className={`px-3 py-1 rounded-full text-sm font-bold ${getScoreColor(analysis.analysisResult.overallScore || 0)}`}>
                         Score: {analysis.analysisResult.overallScore || 'N/A'}/10
                       </span>
@@ -826,7 +836,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                 </div>
 
                 <div className="flex items-center space-x-3">
-                  {analysis.status === 'completed' && (
+                  {isAnalysisCompleted(analysis.status) && (
                     <>
                       <button
                         onClick={(e) => {
@@ -881,7 +891,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
             {/* Expanded Analysis Content */}
             {expandedAnalysis === analysis.id && (
               <div className="border-t border-gray-200 p-6 bg-gray-50">
-                {analysis.status === 'processing' && (
+                {isAnalysisProcessing(analysis.status) && (
                   <div className="text-center py-12">
                     <RefreshCw className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
                     <p className="text-gray-600 text-lg">Analysis in progress...</p>
@@ -889,7 +899,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                   </div>
                 )}
 
-                {analysis.status === 'failed' && (
+                {isAnalysisFailed(analysis.status) && (
                   <div className="text-center py-12">
                     <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
                     <p className="text-red-600 text-lg font-medium">Analysis failed</p>
@@ -899,7 +909,7 @@ export default function AnalysisResults({ userId, analysisIds, onRefresh }: Anal
                   </div>
                 )}
 
-                {analysis.status === 'completed' && (
+                {isAnalysisCompleted(analysis.status) && (
                   activeView[analysis.id] === 'transcription' ? (
                     <div className="max-h-[30rem] overflow-y-auto p-1">
                       {renderTranscription(analysis.transcription)}

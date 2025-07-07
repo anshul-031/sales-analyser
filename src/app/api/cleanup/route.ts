@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Logger } from '@/lib/utils';
 import { DatabaseStorage } from '@/lib/db';
+import { isAnalysisCompleted } from '@/types/enums';
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -49,7 +50,7 @@ export async function DELETE(request: NextRequest) {
       Logger.info('[Cleanup API] With database storage, completed analyses are preserved for history');
       
       const analyses = await DatabaseStorage.getAnalysesByUser(userId);
-      const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
+      const completedAnalyses = analyses.filter(a => isAnalysisCompleted(a.status));
       
       // In the new approach, we don't delete completed analyses as they provide valuable history
       return NextResponse.json({
@@ -87,9 +88,9 @@ export async function GET(request: NextRequest) {
     const uploads = await DatabaseStorage.getUploadsByUser(userId);
     const analyses = await DatabaseStorage.getAnalysesByUser(userId);
     
-    const completedAnalyses = analyses.filter(a => a.status === 'COMPLETED');
+    const completedAnalyses = analyses.filter(a => isAnalysisCompleted(a.status));
     const filesWithCompletedAnalysis = uploads.filter(upload => 
-      analyses.some(analysis => analysis.uploadId === upload.id && analysis.status === 'COMPLETED')
+      analyses.some(analysis => analysis.uploadId === upload.id && isAnalysisCompleted(analysis.status))
     );
 
     return NextResponse.json({

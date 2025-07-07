@@ -4,6 +4,7 @@ import { DatabaseStorage } from '@/lib/db';
 import { prisma } from '@/lib/db';
 import { Logger } from '@/lib/utils';
 import { getAuthenticatedUser } from '@/lib/auth';
+import { isAnalysisCompleted } from '@/types/enums';
 
 /**
  * @swagger
@@ -156,7 +157,7 @@ ${JSON.stringify(analysisResult, null, 2)}
     } else {
       // Get all user's data as context
       const analysesWithUploads = await DatabaseStorage.getAnalysesByUser(user.id);
-      const completedAnalyses = analysesWithUploads.filter(a => a.status === 'COMPLETED');
+      const completedAnalyses = analysesWithUploads.filter(a => isAnalysisCompleted(a.status));
       
       if (completedAnalyses.length === 0) {
         return NextResponse.json({
@@ -261,7 +262,7 @@ export async function GET(request: NextRequest) {
 
     // Get user's available data for chatbot context
     const analysesWithUploads = await DatabaseStorage.getAnalysesByUser(user.id);
-    const completedAnalyses = analysesWithUploads.filter(a => a.status === 'COMPLETED');
+    const completedAnalyses = analysesWithUploads.filter(a => isAnalysisCompleted(a.status));
 
     const availableContext = completedAnalyses.map(analysis => ({
       analysisId: analysis.id,

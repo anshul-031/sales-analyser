@@ -6,6 +6,7 @@ import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client
 import { getAuthenticatedUser } from '@/lib/auth';
 import { LoggingConfig, ProductionMonitoring, ErrorCategories, ErrorCategory } from '@/lib/logging-config';
 import { analysisMonitor } from '@/lib/analysis-monitor';
+import { AnalysisStatus } from '@/types/enums';
 
 // Ensure monitoring is started
 analysisMonitor.startMonitoring();
@@ -447,7 +448,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     });
     
     // Update monitoring stage
-    analysisMonitor.updateAnalysisStage(analysisId, 'PROCESSING');
+    analysisMonitor.updateAnalysisStage(analysisId, AnalysisStatus.PROCESSING);
 
     Logger.info(`[Analyze API] [${requestId}] Reading audio file from R2:`, {
       filename: upload.filename,
@@ -515,7 +516,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     });
     
     // Update monitoring stage
-    analysisMonitor.updateAnalysisStage(analysisId, 'TRANSCRIBING');
+    analysisMonitor.updateAnalysisStage(analysisId, AnalysisStatus.TRANSCRIBING);
     
     const transcriptionStartTime = Date.now();
     const transcriptionHeartbeat = createHeartbeat(requestId, 'Transcription');
@@ -544,7 +545,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
       const analysisHeartbeat = createHeartbeat(requestId, 'Analysis');
       
       // Update monitoring stage
-      analysisMonitor.updateAnalysisStage(analysisId, 'ANALYZING');
+      analysisMonitor.updateAnalysisStage(analysisId, AnalysisStatus.ANALYZING);
       
       try {
         if (analysis.analysisType === 'CUSTOM' && analysis.customPrompt) {
@@ -619,7 +620,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     });
 
     // Update monitoring - analysis completed
-    analysisMonitor.completeAnalysis(analysisId, 'COMPLETED');
+    analysisMonitor.completeAnalysis(analysisId, AnalysisStatus.COMPLETED);
 
     Logger.info(`[Analyze API] [${requestId}] Extracting and storing insights:`, analysisId);
     // Extract and store insights
@@ -753,7 +754,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
     });
 
     // Update monitoring - analysis failed
-    analysisMonitor.completeAnalysis(analysisId, 'FAILED');
+    analysisMonitor.completeAnalysis(analysisId, AnalysisStatus.FAILED);
 
     // Clean up the uploaded file after failed analysis (if enabled)
     const autoDeleteFiles = process.env.AUTO_DELETE_FILES === 'true';

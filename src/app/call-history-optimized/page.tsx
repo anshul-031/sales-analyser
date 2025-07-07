@@ -22,7 +22,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
-import { Logger } from '@/lib/utils';
+import { 
+  Logger,
+  isAnalysisCompleted,
+  isAnalysisFailed,
+  isAnalysisProcessing 
+} from '@/lib/utils';
 import AnalysisDisplay from '@/components/AnalysisDisplay';
 import Chatbot from '@/components/Chatbot';
 import { optimizedApiClient, useCacheStats } from '@/lib/cache-optimized';
@@ -313,13 +318,13 @@ export default function OptimizedCallHistoryPage() {
                           </span>
                           {recording.latestAnalysis && (
                             <div className="flex items-center gap-1">
-                              {recording.latestAnalysis.status === 'COMPLETED' && (
+                              {isAnalysisCompleted(recording.latestAnalysis.status) && (
                                 <CheckCircle className="w-3 h-3 text-green-500" />
                               )}
-                              {recording.latestAnalysis.status === 'FAILED' && (
+                              {isAnalysisFailed(recording.latestAnalysis.status) && (
                                 <XCircle className="w-3 h-3 text-red-500" />
                               )}
-                              {recording.latestAnalysis.status === 'PROCESSING' && (
+                              {isAnalysisProcessing(recording.latestAnalysis.status) && (
                                 <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
                               )}
                               <span className="text-xs text-gray-500">
@@ -422,7 +427,7 @@ export default function OptimizedCallHistoryPage() {
                     <div>
                       {selectedAnalysis?.analysisResult ? (
                         <AnalysisDisplay analysisResult={selectedAnalysis.analysisResult} />
-                      ) : selectedRecording.latestAnalysis?.status === 'COMPLETED' ? (
+                      ) : isAnalysisCompleted(selectedRecording.latestAnalysis?.status) ? (
                         <div className="text-center py-8">
                           <button
                             onClick={() => loadAnalysisResult(selectedRecording.latestAnalysis!.id)}
