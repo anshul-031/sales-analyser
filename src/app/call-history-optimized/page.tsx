@@ -306,32 +306,34 @@ export default function OptimizedCallHistoryPage() {
                       selectedRecording?.id === recording.id ? 'bg-blue-50 border-r-4 border-blue-600' : ''
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <FileAudio className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {recording.originalName}
-                        </p>
-                        <div className="flex items-center gap-4 mt-1">
-                          <span className="text-xs text-gray-500">
-                            {new Date(recording.uploadedAt).toLocaleDateString()}
-                          </span>
-                          {recording.latestAnalysis && (
-                            <div className="flex items-center gap-1">
-                              {isAnalysisCompleted(recording.latestAnalysis.status) && (
-                                <CheckCircle className="w-3 h-3 text-green-500" />
-                              )}
-                              {isAnalysisFailed(recording.latestAnalysis.status) && (
-                                <XCircle className="w-3 h-3 text-red-500" />
-                              )}
-                              {isAnalysisProcessing(recording.latestAnalysis.status) && (
-                                <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
-                              )}
-                              <span className="text-xs text-gray-500">
-                                {recording.latestAnalysis.status.toLowerCase()}
-                              </span>
-                            </div>
-                          )}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <FileAudio className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {recording.originalName}
+                          </p>
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="text-xs text-gray-500">
+                              {new Date(recording.uploadedAt).toLocaleDateString()}
+                            </span>
+                            {recording.latestAnalysis && (
+                              <div className="flex items-center gap-1">
+                                {isAnalysisCompleted(recording.latestAnalysis.status) && (
+                                  <CheckCircle className="w-3 h-3 text-green-500" />
+                                )}
+                                {isAnalysisFailed(recording.latestAnalysis.status) && (
+                                  <XCircle className="w-3 h-3 text-red-500" />
+                                )}
+                                {isAnalysisProcessing(recording.latestAnalysis.status) && (
+                                  <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
+                                )}
+                                <span className="text-xs text-gray-500">
+                                  {recording.latestAnalysis.status.toLowerCase()}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <button
@@ -339,7 +341,8 @@ export default function OptimizedCallHistoryPage() {
                           e.stopPropagation();
                           handleDelete(recording.id);
                         }}
-                        className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                        className="p-1 text-gray-400 hover:text-red-600 transition-colors flex-shrink-0 rounded hover:bg-gray-100"
+                        title="Delete recording"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

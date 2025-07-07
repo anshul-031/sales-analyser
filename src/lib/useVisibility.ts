@@ -6,31 +6,65 @@ export function useVisibility() {
   const [isDocumentVisible, setIsDocumentVisible] = useState(true);
   const elementRef = useRef<HTMLDivElement | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastVisibilityCheckRef = useRef<number>(0);
 
-  // Function to check if element is in viewport
+  // Enhanced function to check if element is in viewport with partial visibility
   const checkElementVisibility = () => {
     if (!elementRef.current) return false;
 
     const rect = elementRef.current.getBoundingClientRect();
-    const isInViewport = (
-      rect.top >= 0 &&
-      rect.left >= 0 &&
-      rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-      rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    
+    // Check if element is partially visible (more lenient than before)
+    const isPartiallyVisible = (
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.top < viewportHeight &&
+      rect.left < viewportWidth
     );
 
-    return isInViewport;
+    // Additionally check if at least 30% of the element is visible
+    const elementHeight = rect.height;
+    const elementWidth = rect.width;
+    const visibleHeight = Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
+    const visibleWidth = Math.min(rect.right, viewportWidth) - Math.max(rect.left, 0);
+    
+    const visibleArea = Math.max(0, visibleHeight) * Math.max(0, visibleWidth);
+    const totalArea = elementHeight * elementWidth;
+    const visibilityRatio = totalArea > 0 ? visibleArea / totalArea : 0;
+
+    // Element is considered visible if it's partially visible and at least 30% is shown
+    return isPartiallyVisible && visibilityRatio >= 0.3;
   };
 
-  // Debounced visibility check
+  // Optimized debounced visibility check with rate limiting
   const debouncedVisibilityCheck = () => {
+    const now = Date.now();
+    
+    // Rate limiting: don't check visibility more than once per second
+    if (now - lastVisibilityCheckRef.current < 1000) {
+      return;
+    }
+    
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
 
     debounceTimeoutRef.current = setTimeout(() => {
       const elementVisible = checkElementVisibility();
-      setIsVisible(elementVisible && isDocumentVisible);
+      const newVisibility = elementVisible && isDocumentVisible;
+      
+      // Only update if visibility actually changed
+      setIsVisible(prev => {
+        if (prev !== newVisibility) {
+          console.log('[Visibility] Visibility changed:', prev, '->', newVisibility);
+          return newVisibility;
+        }
+        return prev;
+      });
+      
+      lastVisibilityCheckRef.current = now;
     }, POLLING_CONFIG.VISIBILITY_DEBOUNCE_DELAY);
   };
 
@@ -40,9 +74,11 @@ export function useVisibility() {
       const documentVisible = !document.hidden;
       setIsDocumentVisible(documentVisible);
       
-      // If document becomes visible, check element visibility
+      // If document becomes visible, check element visibility after a short delay
       if (documentVisible) {
-        debouncedVisibilityCheck();
+        setTimeout(() => {
+          debouncedVisibilityCheck();
+        }, 100);
       } else {
         setIsVisible(false);
       }
@@ -54,14 +90,23 @@ export function useVisibility() {
     };
   }, [isDocumentVisible]);
 
-  // Handle scroll and resize events
+  // Handle scroll and resize events with throttling
   useEffect(() => {
+    let scrollTimeout: NodeJS.Timeout;
+    let resizeTimeout: NodeJS.Timeout;
+
     const handleScroll = () => {
-      debouncedVisibilityCheck();
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        debouncedVisibilityCheck();
+      }, 100); // Throttle scroll events
     };
 
     const handleResize = () => {
-      debouncedVisibilityCheck();
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        debouncedVisibilityCheck();
+      }, 200); // Throttle resize events
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
@@ -70,6 +115,8 @@ export function useVisibility() {
     return () => {
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', handleResize);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      if (resizeTimeout) clearTimeout(resizeTimeout);
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
@@ -79,7 +126,10 @@ export function useVisibility() {
   // Initial visibility check when element ref changes
   useEffect(() => {
     if (elementRef.current) {
-      debouncedVisibilityCheck();
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        debouncedVisibilityCheck();
+      }, 50);
     }
   }, [elementRef.current, isDocumentVisible]);
 

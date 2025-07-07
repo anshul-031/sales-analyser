@@ -47,8 +47,8 @@ export const API_CONFIG = {
 
 // Polling Configuration
 export const POLLING_CONFIG = {
-  // Interval for polling analysis status (1 minute)
-  ANALYSIS_STATUS_INTERVAL: 60 * 1000, // 1 minute in milliseconds
+  // Interval for polling analysis status (2 minutes for more conservative approach)
+  ANALYSIS_STATUS_INTERVAL: 120 * 1000, // 2 minutes in milliseconds
   
   // Maximum polling duration (30 minutes)
   MAX_POLLING_DURATION: 30 * 60 * 1000, // 30 minutes in milliseconds

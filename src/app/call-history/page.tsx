@@ -713,12 +713,16 @@ export default function CallHistoryPage() {
                   onClick={() => handleRecordingSelect(rec)}
                   className={`p-4 cursor-pointer border-b border-gray-200 ${selectedRecording?.id === rec.id ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
                 >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-grow">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-grow min-w-0">
                       <h3 className="font-semibold text-sm text-gray-900 truncate">{rec.originalName}</h3>
                       <p className="text-xs text-gray-500">{formatFileSize(rec.fileSize)} - {new Date(rec.uploadedAt).toLocaleDateString()}</p>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(rec.id); }} className="text-gray-400 hover:text-red-600 ml-2">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleDelete(rec.id); }} 
+                      className="text-gray-400 hover:text-red-600 flex-shrink-0 p-1 rounded hover:bg-gray-100 transition-colors"
+                      title="Delete recording"
+                    >
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -1131,13 +1135,13 @@ export default function CallHistoryPage() {
                                             {!collapsedSections.has('speaker-analysis') && (
                                               <div className="border-t border-gray-200 p-4 bg-gray-50">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                  {speakers.map((speaker: string) => {
-                                                      const speakerName = speakerMapping[speaker] || speaker;
+                                                  {speakers.map((speaker: string, index: number) => {
+                                                      const genericSpeakerName = `Speaker ${index + 1}`;
                                                       const sentiment = sentimentAnalysis.find((s: SpeakerSentiment) => s.speaker === speaker);
                                                       const tone = toneAnalysis.find((t: SpeakerTone) => t.speaker === speaker);
                                                       return (
                                                           <div key={speaker} className="p-3 bg-white rounded-lg border shadow-sm">
-                                                              <h4 className="font-semibold text-gray-800 mb-2">{speakerName}</h4>
+                                                              <h4 className="font-semibold text-gray-800 mb-2">{genericSpeakerName}</h4>
                                                               <div className="space-y-1">
                                                                 {sentiment && (
                                                                   <div className="flex items-center gap-2">
@@ -1190,13 +1194,15 @@ export default function CallHistoryPage() {
                                           {!collapsedSections.has('transcription-segments') && (
                                             <div className="border-t border-gray-200 p-4 space-y-3 max-h-96 overflow-y-auto">
                                               {(transcriptionData as ParsedTranscription).diarized_transcription.map((segment: any, index: number) => {
-                                                const speakerName = speakerMapping[segment.speaker] || segment.speaker;
+                                                // Use generic speaker names instead of actual speaker names
+                                                const speakerIndex = speakers.indexOf(segment.speaker);
+                                                const genericSpeakerName = `Speaker ${speakerIndex + 1}`;
                                                 const isSpeaker1 = isChatView && segment.speaker === speakers[0];
 
                                                 return (
                                                   <div key={index} className={`flex flex-col ${isChatView ? (isSpeaker1 ? 'items-start' : 'items-end') : 'items-start'}`}>
                                                       <div className={`flex items-center gap-2 ${isChatView && !isSpeaker1 ? 'flex-row-reverse' : ''}`}>
-                                                          <span className="font-bold text-sm text-gray-600">{speakerName}</span>
+                                                          <span className="font-bold text-sm text-gray-600">{genericSpeakerName}</span>
                                                           {showDetailedAnalysis && (segment as any).sentiment && (
                                                             <span className={`text-xs px-2 py-1 rounded-full ${
                                                               (segment as any).sentiment === 'positive' ? 'bg-green-100 text-green-800' :
@@ -1449,17 +1455,25 @@ export default function CallHistoryPage() {
                         <p className="text-blue-700 mb-2">
                           Your call recording is being analyzed. This typically takes 5-10 minutes.
                         </p>
-                        {isPolling && (
-                          <div className="text-blue-600 text-sm flex items-center gap-2">
-                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                            Auto-refreshing status (polling active)
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {isPolling && (
+                              <div className="flex items-center gap-2 text-blue-600 text-sm">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                <span>Auto-updating status</span>
+                              </div>
+                            )}
+                            {!isPolling && currentAnalysisStatus?.isInProgress && (
+                              <div className="flex items-center gap-2 text-blue-500 text-sm">
+                                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                <span>Monitoring for updates</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {!isVisible && currentAnalysisStatus?.isInProgress && (
-                          <div className="text-blue-600 text-sm mt-2">
-                            <span className="text-blue-500">ℹ️</span> Status updates paused - scroll to view this section to resume
+                          <div className="text-xs text-blue-500">
+                            {currentAnalysisStatus?.isInProgress ? 'Status checks automatically' : 'Will resume checking when analysis is active'}
                           </div>
-                        )}
+                        </div>
                       </div>
                     );
                   }
