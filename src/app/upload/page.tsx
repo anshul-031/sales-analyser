@@ -77,110 +77,46 @@ export default function UploadPage() {
   const handleAllUploadsComplete = (response: unknown) => {
     console.log('[UploadPage] === UPLOADS COMPLETE CALLBACK ===');
     console.log('[UploadPage] Response received:', JSON.stringify(response, null, 2));
-    console.log('[UploadPage] Response type:', typeof response);
-    console.log('[UploadPage] User authenticated:', !!user);
-    console.log('[UploadPage] Router available:', !!router);
     
     setFilesUploading(false);
     Logger.info('[UploadPage] All uploads completed:', response);
 
     const uploadResponse = response as {
-      analysisStarted?: boolean;
-      analyses?: Array<{ id: string }>;
+      success?: boolean;
+      message?: string;
       error?: string;
-      redirectAnyway?: boolean;
+      summary?: { total: number; successful: number; failed: number };
     };
 
-    console.log('[UploadPage] Parsed response - analysisStarted:', uploadResponse.analysisStarted);
-    console.log('[UploadPage] Parsed response - analyses:', uploadResponse.analyses);
-    console.log('[UploadPage] Analyses is array:', Array.isArray(uploadResponse.analyses));
-    console.log('[UploadPage] Analyses length:', uploadResponse.analyses?.length);
+    console.log('[UploadPage] Parsed response:', uploadResponse);
 
-    // More robust condition checking
-    const shouldRedirect = (uploadResponse.analysisStarted === true && 
-                           Array.isArray(uploadResponse.analyses) &&
-                           uploadResponse.analyses.length > 0) ||
-                          uploadResponse.redirectAnyway === true;
+    const shouldRedirect = uploadResponse.success === true && (uploadResponse.summary?.successful ?? 0) > 0;
     
     console.log('[UploadPage] Should redirect:', shouldRedirect);
-    console.log('[UploadPage] Redirect anyway flag:', uploadResponse.redirectAnyway);
 
     if (shouldRedirect) {
-      const newAnalysisIds = (uploadResponse.analyses || []).map((a) => a.id).filter(id => id);
-      console.log('[UploadPage] Analysis IDs extracted:', newAnalysisIds);
+      const successCount = uploadResponse.summary?.successful || 0;
+      Logger.info(`[UploadPage] Analysis successfully triggered for ${successCount} file(s). Redirecting to history.`);
       
-      if (uploadResponse.analysisStarted) {
-        Logger.info('[UploadPage] Auto-analysis started, redirecting to history with', newAnalysisIds.length, 'analyses');
-        setAnalysisIds(prev => [...newAnalysisIds, ...prev]);
-        
-        console.log('[UploadPage] Showing success toast notification...');
-        toast.success("Analysis started! Redirecting to call history page...", {
-          duration: 2500,
-        });
-      } else {
-        Logger.info('[UploadPage] Files uploaded but analysis failed, redirecting to history anyway');
-        
-        console.log('[UploadPage] Showing error toast notification...');
-        const errorMsg = uploadResponse.error || 'Analysis failed to start';
-        toast.error(`Files uploaded successfully, but ${errorMsg}. Redirecting to call history...`, {
-          duration: 2500,
-        });
-      }
+      toast.success(`Analysis started for ${successCount} file(s)! Redirecting to call history...`, {
+        duration: 2500,
+      });
       
-      console.log('[UploadPage] Setting timeout for redirection...');
-      
-      // Use a consistent shorter delay for better UX
-      const redirectDelay = 1500; // 1.5 seconds - enough time to see the toast
-      console.log('[UploadPage] Redirect delay set to:', redirectDelay, 'ms');
-      
-      // Show loading state during redirection
+      const redirectDelay = 1500;
       setIsRedirecting(true);
       
       setTimeout(() => {
         console.log('[UploadPage] EXECUTING REDIRECTION TO CALL HISTORY');
-        console.log('[UploadPage] Current location:', window.location.href);
-        console.log('[UploadPage] Router object available:', !!router);
-        console.log('[UploadPage] User still authenticated:', !!user);
-        
-        try {
-          console.log('[UploadPage] Attempting router.push("/call-history")...');
-          router.push('/call-history');
-          console.log('[UploadPage] ✅ Router.push() executed successfully');
-          
-          // Add a small delay to verify the navigation worked
-          setTimeout(() => {
-            console.log('[UploadPage] Post-redirect location check:', window.location.href);
-            if (!window.location.href.includes('/call-history')) {
-              console.warn('[UploadPage] Router navigation may have failed, using fallback...');
-              window.location.href = '/call-history';
-            }
-            setIsRedirecting(false); // Reset state in case navigation failed
-          }, 100);
-          
-        } catch (error) {
-          console.error('[UploadPage] ❌ Router.push() failed:', error);
-          console.log('[UploadPage] Attempting fallback redirection using window.location...');
-          try {
-            window.location.href = '/call-history';
-            console.log('[UploadPage] ✅ Fallback redirection executed');
-          } catch (fallbackError) {
-            console.error('[UploadPage] ❌ Fallback redirection also failed:', fallbackError);
-            setIsRedirecting(false); // Reset state if all fails
-          }
-        }
+        router.push('/call-history');
       }, redirectDelay);
     } else {
-      console.log('[UploadPage] NOT redirecting - Reasons:');
-      console.log('[UploadPage] - analysisStarted:', uploadResponse.analysisStarted, '(should be true)');
-      console.log('[UploadPage] - analyses is array:', Array.isArray(uploadResponse.analyses), '(should be true)');
-      console.log('[UploadPage] - analyses length:', uploadResponse.analyses?.length, '(should be > 0)');
-      console.log('[UploadPage] - analyses value:', uploadResponse.analyses);
-      console.log('[UploadPage] - redirectAnyway:', uploadResponse.redirectAnyway, '(fallback flag)');
-      console.log('[UploadPage] - error:', uploadResponse.error);
+      const errorMsg = uploadResponse.error || 'Analysis could not be triggered.';
+      console.log('[UploadPage] NOT redirecting:', errorMsg);
+      toast.error(errorMsg, {
+        duration: 4000,
+      });
     }
     
-    // No need to reload files here - optimization to prevent unnecessary re-renders
-    // The FileUpload component handles the file state updates internally
     console.log('[UploadPage] Skipping file reload to prevent unnecessary re-renders');
   };
 

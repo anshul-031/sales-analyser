@@ -67,7 +67,7 @@ export default function CallHistoryPage() {
   
   // Polling and visibility detection
   const { isVisible, elementRef } = useVisibility();
-  const [lastPollingUpdate, setLastPollingUpdate] = useState<number>(0);
+  const lastPollingUpdateRef = useRef<number>(0);
   
   // Memoize current analysis status to prevent unnecessary re-renders
   const currentAnalysisStatus = useMemo(() => {
@@ -87,53 +87,37 @@ export default function CallHistoryPage() {
   // Optimized reload function to prevent excessive API calls
   const reloadCallRecordings = useCallback(async () => {
     if (!user || loading) return;
-    
-    // Prevent too frequent polling updates
+
     const now = Date.now();
-    if (now - lastPollingUpdate < 5000) { // 5 second minimum interval
-      console.log('[CallHistory] Skipping reload - too frequent');
+    if (now - lastPollingUpdateRef.current < 5000) {
       return;
     }
-    
-    setLastPollingUpdate(now);
-    
+    lastPollingUpdateRef.current = now;
+
     try {
       console.log('[CallHistory] Polling: Reloading call recordings...');
       const response = await fetch('/api/upload?optimized=true');
       const result = await response.json();
-      
+
       if (result.success) {
-        const allFiles = result.uploads || [];
-        const audioFiles = allFiles.filter((file: any) => 
-          file.mimeType?.startsWith('audio/') || 
+        const audioFiles = (result.uploads || []).filter((file: any) =>
+          file.mimeType?.startsWith('audio/') ||
           file.originalName?.match(/\.(mp3|wav|m4a|ogg|flac|aac)$/i)
         );
-        
-        // Only update if there are actual changes to prevent re-renders
-        setCallRecordings(prev => {
-          const hasChanges = JSON.stringify(prev) !== JSON.stringify(audioFiles);
-          if (hasChanges) {
+
+        setCallRecordings(prevRecordings => {
+          if (JSON.stringify(prevRecordings) !== JSON.stringify(audioFiles)) {
             console.log('[CallHistory] Polling: Found changes, updating recordings');
-            
-            // Update selected recording if it exists in the new data
-            const updatedSelectedRecording = selectedRecording ? 
-              audioFiles.find((f: any) => f.id === selectedRecording.id) : null;
-            
-            if (updatedSelectedRecording) {
-              setSelectedRecording(updatedSelectedRecording);
-            }
-            
             return audioFiles;
-          } else {
-            console.log('[CallHistory] Polling: No changes found');
-            return prev;
           }
+          console.log('[CallHistory] Polling: No changes found');
+          return prevRecordings;
         });
       }
     } catch (error) {
       console.error('[CallHistory] Polling: Error reloading recordings:', error);
     }
-  }, [user, loading, lastPollingUpdate, selectedRecording]);
+  }, [user]);
   
   // Set up polling for analysis in progress
   const { isPolling } = usePolling({
@@ -160,20 +144,21 @@ export default function CallHistoryPage() {
   }, [user, authLoading]);
 
   // Track selectedRecording changes
+  // This effect synchronizes the selectedRecording state when the main list updates
   useEffect(() => {
-    const trackingId = Math.random().toString(36).substr(2, 9);
-    console.log(`[CallHistory-STATE-${trackingId}] selectedRecording changed:`, selectedRecording ? {
-      id: selectedRecording.id,
-      filename: selectedRecording.filename,
-      analyses: selectedRecording.analyses?.map(a => ({
-        id: a.id,
-        status: a.status,
-        hasAnalysisResult: !!a.analysisResult,
-        hasTranscription: !!a.transcription
-      }))
-    } : null);
-    console.log(`[CallHistory-STATE-${trackingId}] selectedRecordingIdRef.current:`, selectedRecordingIdRef.current);
-  }, [selectedRecording]);
+    if (selectedRecordingIdRef.current) {
+      const newSelectedData = callRecordings.find(r => r.id === selectedRecordingIdRef.current);
+      
+      // Use a functional update with a deep comparison to prevent re-renders if the data is the same
+      setSelectedRecording(currentSelected => {
+        if (newSelectedData && JSON.stringify(currentSelected) !== JSON.stringify(newSelectedData)) {
+          console.log('[CallHistory] Syncing selected recording state with updated data from the list.');
+          return newSelectedData;
+        }
+        return currentSelected;
+      });
+    }
+  }, [callRecordings]);
 
   // Track activeTab changes  
   useEffect(() => {

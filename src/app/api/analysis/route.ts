@@ -157,8 +157,9 @@ export async function POST(request: NextRequest) {
       customParameters: parameters
     });
 
-    // Call the analyze API endpoint with the appropriate format
-    const analyzeResponse = await fetch(`${request.nextUrl.origin}/api/analyze`, {
+    // Fire-and-forget call to the analyze API endpoint.
+    // We don't await the response to avoid Vercel function timeouts.
+    fetch(`${request.nextUrl.origin}/api/analyze`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -170,31 +171,25 @@ export async function POST(request: NextRequest) {
         analysisType: 'parameters',
         customParameters: parameters
       }),
+    }).catch(error => {
+      // This error won't be sent to the client, as we respond immediately.
+      // This is for server-side logging of dispatch errors.
+      console.error('[Analysis API] Error dispatching analysis request:', error);
     });
 
-    console.log('[Analysis API] Analyze API response status:', analyzeResponse.status);
-    console.log('[Analysis API] Analyze API response ok:', analyzeResponse.ok);
-    
-    const analyzeResult = await analyzeResponse.json();
-    console.log('[Analysis API] Analyze API response:', JSON.stringify(analyzeResult, null, 2));
+    console.log('[Analysis API] === ANALYSIS TRIGGERED SUCCESSFULLY ===');
 
-    if (!analyzeResult.success) {
-      console.error('[Analysis API] Analyze API failed:', analyzeResult.error);
-      console.log('[Analysis API] Analyze API error details:', analyzeResult.details);
-      return NextResponse.json({
-        success: false,
-        error: analyzeResult.error || 'Failed to start analysis'
-      }, { status: 500 });
-    }
-
-    console.log('[Analysis API] === ANALYSIS STARTED SUCCESSFULLY ===');
-    console.log('[Analysis API] Analyses created:', analyzeResult.analyses?.length || 0);
-
+    // Respond immediately to the client.
+    // The frontend should poll for analysis status updates.
     return NextResponse.json({
       success: true,
-      analyses: analyzeResult.analyses || [],
-      message: analyzeResult.message,
-      summary: analyzeResult.summary
+      message: `Analysis successfully triggered for ${validFileIds.length} file(s).`,
+      analyses: [], // Analyses are being created in the background.
+      summary: {
+        total: validFileIds.length,
+        successful: validFileIds.length, // Optimistically assume triggering was successful
+        failed: 0
+      }
     });
 
   } catch (error) {

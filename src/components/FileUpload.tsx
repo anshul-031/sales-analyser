@@ -268,12 +268,8 @@ export default function FileUpload({
             fileIds.includes(f.uploadId) ? { ...f, status: 'success', analysisTriggered: true } : f
           ));
           
-          const callbackData = { 
-            analysisStarted: true, 
-            analyses: analysisResult.analyses 
-          };
-          console.log('[FileUpload] Calling onUploadsComplete with:', JSON.stringify(callbackData, null, 2));
-          onUploadsComplete(callbackData);
+          console.log('[FileUpload] Calling onUploadsComplete with the full analysis result...');
+          onUploadsComplete(analysisResult);
         } else {
           console.error('[FileUpload] Analysis failed:', analysisResult.error);
           console.log('[FileUpload] Analysis result full response:', JSON.stringify(analysisResult, null, 2));
@@ -287,14 +283,8 @@ export default function FileUpload({
           // This ensures the user doesn't get stuck on the upload page
           console.log('[FileUpload] Redirecting to call history despite analysis failure');
           
-          const callbackData = { 
-            analysisStarted: false, 
-            analyses: [],
-            error: errorMessage,
-            redirectAnyway: true // Flag to indicate we should redirect anyway
-          };
-          
-          onUploadsComplete(callbackData);
+          // Pass the entire failed response object so the parent component can handle it.
+          onUploadsComplete(analysisResult);
         }
       } catch (error) {
         console.error('[FileUpload] Error starting analysis:', error);
