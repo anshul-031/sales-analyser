@@ -29,8 +29,6 @@ import {
 } from '@/lib/utils';
 import AnalysisDisplay from '@/components/AnalysisDisplay';
 import Chatbot from '@/components/Chatbot';
-import { usePolling } from '@/lib/usePolling';
-import { useVisibility } from '@/lib/useVisibility';
 
 import type { 
   CallRecording, 
@@ -64,9 +62,7 @@ export default function CallHistoryPage() {
   const [loadedAnalysisIds, setLoadedAnalysisIds] = useState<Set<string>>(new Set());
   const [retryAttempts, setRetryAttempts] = useState<Map<string, number>>(new Map());
   const [failedAnalysisIds, setFailedAnalysisIds] = useState<Set<string>>(new Set());
-  
-  // Polling and visibility detection
-  const { isVisible, elementRef } = useVisibility();
+  const [isPolling, setIsPolling] = useState(false);
   const lastPollingUpdateRef = useRef<number>(0);
   
   // Memoize current analysis status to prevent unnecessary re-renders
@@ -117,19 +113,21 @@ export default function CallHistoryPage() {
     } catch (error) {
       console.error('[CallHistory] Polling: Error reloading recordings:', error);
     }
-  }, [user]);
+  }, [user, loading]);
   
   // Set up polling for analysis in progress
-  const { isPolling } = usePolling({
-    enabled: Boolean(currentAnalysisStatus?.isInProgress),
-    isVisible,
-    onPoll: reloadCallRecordings,
-    onStop: () => {
-      console.log('[CallHistory] Stopped polling for analysis status');
-    },
-    interval: 60000, // 1 minute
-    maxDuration: 30 * 60000 // 30 minutes
-  });
+
+  useEffect(() => {
+    if (currentAnalysisStatus?.isInProgress) {
+      setIsPolling(true);
+      const interval = setInterval(() => {
+        reloadCallRecordings();
+      }, parseInt(process.env.NEXT_PUBLIC_CALL_HISTORY_POLLING_INTERVAL || '10000', 10));
+      return () => clearInterval(interval);
+    } else {
+      setIsPolling(false);
+    }
+  }, [currentAnalysisStatus, reloadCallRecordings]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -253,7 +251,7 @@ export default function CallHistoryPage() {
       setLoading(false);
       console.log('[CallHistory] Finished loading recordings');
     }
-  }, [user, selectedRecording]);
+  }, [user]);
 
   const handleRecordingSelect = (recording: CallRecording) => {
     const selectionId = Math.random().toString(36).substr(2, 9);
@@ -399,7 +397,7 @@ export default function CallHistoryPage() {
         
         // Update the recording with the loaded data
         // We need to find the correct recording to update, whether it's the currently selected one or not
-        const targetRecordingId = expectedRecordingId || selectedRecording?.id;
+        const targetRecordingId = expectedRecordingId || selectedRecordingIdRef.current;
         
         if (targetRecordingId) {
           console.log(`[CallHistory] Before update - selectedRecording.id:`, selectedRecording?.id);
@@ -456,7 +454,7 @@ export default function CallHistoryPage() {
     } finally {
       setLoadingAnalysisData(false);
     }
-  }, [user, loadingAnalysisData, failedAnalysisIds, retryAttempts, loadedAnalysisIds, selectedRecording]);
+  }, [user, loadingAnalysisData, failedAnalysisIds, retryAttempts, loadedAnalysisIds]);
 
   const handleDelete = async (recordingId: string) => {
     if (!confirm('Are you sure you want to delete this recording and its analysis?')) return;
@@ -1430,7 +1428,6 @@ export default function CallHistoryPage() {
                     }
                     return (
                       <div 
-                        ref={elementRef}
                         className="bg-blue-50 border border-blue-200 rounded-lg p-6"
                       >
                         <div className="flex items-center text-blue-600 mb-2">
