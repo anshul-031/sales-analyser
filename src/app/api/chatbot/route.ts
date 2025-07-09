@@ -88,12 +88,10 @@ export async function POST(request: NextRequest) {
         const upload = await DatabaseStorage.getUploadById(analysis.uploadId);
         contextData = `
 **Call Recording: ${upload?.originalName || 'Unknown'}**
-**Analysis Type:** ${analysis.analysisType}
 **Transcription:**
 ${analysis.transcription || 'No transcription available'}
 
-**Analysis Results:**
-${JSON.stringify(analysis.analysisResult, null, 2)}
+**Additional Context:** ${analysis.analysisType} analysis available
         `;
         contextSource = `Analysis: ${analysis.id}`;
         Logger.info('[ChatbotAPI] Using specific analysis context:', analysisId);
@@ -131,14 +129,10 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
           
           contextData = `
 **Call Recording: ${upload.originalName}**
-**File Size:** ${Math.round(Number(upload.fileSize) / 1024)} KB
 **Upload Date:** ${new Date(upload.uploadedAt).toLocaleDateString()}
 
 **Transcription:**
 ${transcription || 'No transcription available'}
-
-**Analysis Results:**
-${JSON.stringify(analysisResult, null, 2)}
           `;
           contextSource = `Upload: ${upload.originalName}`;
           Logger.info('[ChatbotAPI] Using specific upload context with optimized loading:', uploadId);
@@ -166,17 +160,13 @@ ${JSON.stringify(analysisResult, null, 2)}
         }, { status: 404 });
       }
 
-      // Create context from all completed analyses
+      // Create context from all completed analyses - focus on transcriptions
       contextData = completedAnalyses.map((analysis, index) => `
 **Call Recording ${index + 1}: ${analysis.upload?.originalName || 'Unknown'}**
-**Analysis Type:** ${analysis.analysisType}
 **Upload Date:** ${analysis.upload ? new Date(analysis.upload.uploadedAt).toLocaleDateString() : 'Unknown'}
 
 **Transcription:**
 ${analysis.transcription || 'No transcription available'}
-
-**Analysis Results:**
-${JSON.stringify(analysis.analysisResult, null, 2)}
 
 ---
       `).join('\n');
@@ -186,7 +176,7 @@ ${JSON.stringify(analysis.analysisResult, null, 2)}
     }
 
     // Create enhanced prompt for the chatbot
-    const chatbotPrompt = `You are a helpful AI assistant specializing in call analysis. You have access to call recording transcriptions and detailed analysis results. Your role is to help users understand their call performance by answering questions about their call recordings and analysis results.
+    const chatbotPrompt = `You are a helpful AI assistant specializing in call analysis. You have access to call recording transcriptions. Your role is to help users understand their call performance by analyzing the raw transcription data directly.
 
 **Available Context:**
 ${contextData}
@@ -194,19 +184,17 @@ ${contextData}
 **User Question:** ${question}
 
 **Instructions:**
-1. Answer the user's question based on the available call recording data and analysis results
-2. Be specific and reference actual content from the transcriptions and analysis when possible
-3. If the question is about performance metrics, refer to the scores and detailed analysis provided
-4. If asking about specific calls, mention the call recording name when relevant
-5. Provide actionable insights and recommendations when appropriate
-6. If the question cannot be answered with the available data, explain what information is missing
-7. Keep your response conversational but professional
-8. Use bullet points or numbered lists for clarity when listing multiple items
-9. If referring to scores, always mention the scale (1-10) and provide context
-10. **IMPORTANT: Keep responses SHORT and TO THE POINT. Provide concise answers that directly address the question without excessive detail or explanation.**
+1. **PRIMARY SOURCE**: Base your analysis primarily on the transcription data, not the pre-analyzed results
+2. Analyze the actual conversation content, tone, and communication patterns from the transcription
+3. Provide insights based on what you observe in the actual dialogue
+4. Keep responses SHORT and concise - maximum 2-3 sentences
+5. Focus on actionable insights from the conversation itself
+6. If referencing analysis results, use them only as supporting context, not primary source
+7. Mention specific quotes or examples from the transcription when relevant
+8. Be direct and conversational
 
 **Response Format:**
-Provide a brief, clear response that directly addresses the user's question. Be concise and focus on the most important information from the call transcriptions and analysis results.`;
+Give a brief, focused answer based on analyzing the transcription content. Keep it under 50 words when possible.`;
 
     // Get response from Gemini using our service with round-robin API keys
     Logger.info('[ChatbotAPI] Sending query to Gemini service');
@@ -279,7 +267,7 @@ export async function GET(request: NextRequest) {
         availableContext,
         totalAnalyses: completedAnalyses.length,
         message: completedAnalyses.length > 0 
-          ? 'Ready to answer questions about your call recordings and analysis results.'
+          ? 'Ready to analyze your call transcriptions and provide conversation insights.'
           : 'No completed analyses found. Please upload and analyze call recordings first.'
       }
     });

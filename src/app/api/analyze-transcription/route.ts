@@ -37,8 +37,8 @@ export async function POST(request: NextRequest) {
       Logger.warn('[AnalyzeTranscription] Transcription is not a valid JSON, using as plain text.');
     }
 
-    // Generate analysis using Gemini - use direct text response
-    const prompt = `You are an expert sales and communication analyst. Please analyze the following call transcription(s) and answer the specific question asked.
+    // Generate analysis using Gemini - use direct text response with short format
+    const prompt = `You are an expert sales and communication analyst. Analyze the following call transcription(s) and answer the specific question with a SHORT, focused response.
 
 TRANSCRIPTION(S):
 ${transcriptionForAnalysis}
@@ -46,13 +46,15 @@ ${transcriptionForAnalysis}
 QUESTION TO ANSWER:
 ${customPrompt}
 
-Please provide a comprehensive, insightful analysis that directly addresses the question. Focus on:
-- Direct answers to the specific question asked
-- Key insights and patterns
-- Actionable recommendations
-- Specific examples from the transcription(s) when relevant
+INSTRUCTIONS:
+- Keep your response BRIEF and CONCISE (2-3 sentences maximum)
+- Focus on the most important insights from the actual conversation
+- Provide direct answers based on what was said in the transcription(s)
+- Include specific examples or quotes when relevant
+- Give actionable recommendations in a few words
+- Avoid lengthy explanations or excessive detail
 
-Format your response in a clear, structured manner as plain text.`;
+Format your response as plain text, keeping it under 100 words.`;
 
     const analysisText = await geminiService.generateChatbotResponse(prompt);
 

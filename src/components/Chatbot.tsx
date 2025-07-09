@@ -38,14 +38,14 @@ export default function Chatbot({ userId, analysisId, uploadId, onClose }: Chatb
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Sample questions for user guidance
+  // Sample questions for user guidance - focused on transcription analysis
   const sampleQuestions = [
-    "What were the main strengths in my sales calls?",
-    "Which areas need the most improvement?",
-    "How did I handle customer objections?",
-    "What was my average performance score?",
-    "Give me specific examples of good communication",
-    "What recommendations do you have for closing techniques?"
+    "What was the customer's main concern?",
+    "How did I respond to objections?",
+    "What communication style did I use?",
+    "Did the customer seem engaged?",
+    "What was the tone of the conversation?",
+    "How well did I listen to the customer?"
   ];
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function Chatbot({ userId, analysisId, uploadId, onClose }: Chatb
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
       type: 'bot',
-      content: `Hello! I'm your call analysis assistant. I can help you understand your call recordings and performance analysis. Ask me anything about your calls, performance metrics, or get specific recommendations for improvement.`,
+      content: `Hello! I analyze your call transcriptions directly. Ask me about conversation patterns, customer responses, or communication effectiveness based on what was actually said in your calls.`,
       timestamp: new Date()
     };
     setMessages([welcomeMessage]);
@@ -316,7 +316,7 @@ export default function Chatbot({ userId, analysisId, uploadId, onClose }: Chatb
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Ask about your call recordings..."
+            placeholder="Ask about conversation content..."
             className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
             disabled={isLoading}
           />
@@ -330,7 +330,7 @@ export default function Chatbot({ userId, analysisId, uploadId, onClose }: Chatb
         </div>
         <div className="text-xs text-gray-500 mt-2 flex items-center">
           <Lightbulb className="w-3 h-3 mr-1" />
-          Ask about performance scores, specific calls, or improvement suggestions
+          Ask about conversation content, customer responses, or communication patterns
         </div>
       </div>
     </div>
