@@ -67,8 +67,8 @@ export default function AnalyticsPage() {
       
       // Fetch uploads and analyses data
       const [uploadsResponse, analysesResponse] = await Promise.all([
-        fetch('/api/upload'),
-        fetch('/api/analyze')
+        fetch('/api/uploads-optimized'),
+        fetch('/api/analytics-optimized')
       ]);
 
       const [uploadsResult, analysesResult] = await Promise.all([

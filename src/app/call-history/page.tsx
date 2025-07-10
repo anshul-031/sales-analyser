@@ -94,7 +94,7 @@ export default function CallHistoryPage() {
 
     try {
       console.log('[CallHistory] Polling: Reloading call recordings...');
-      const response = await fetch('/api/upload?optimized=true');
+      const response = await fetch('/api/uploads-optimized?includeAnalyses=true');
       const result = await response.json();
 
       if (result.success) {
@@ -172,7 +172,7 @@ export default function CallHistoryPage() {
     try {
       console.log('[CallHistory] Starting to load call recordings...');
       setLoading(true);
-      const response = await fetch('/api/upload?optimized=true');
+      const response = await fetch('/api/uploads-optimized?includeAnalyses=true');
       console.log('[CallHistory] Upload API response status:', response.status);
       
       const result = await response.json();

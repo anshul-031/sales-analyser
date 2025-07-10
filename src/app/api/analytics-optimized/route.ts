@@ -3,6 +3,28 @@ import { DatabaseStorage } from '@/lib/db';
 import { Logger } from '@/lib/utils';
 import { getAuthenticatedUser } from '@/lib/auth';
 
+function stringifyBigInts(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  if (typeof obj === 'bigint') {
+    return obj.toString();
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(stringifyBigInts);
+  }
+  if (typeof obj === 'object') {
+    const newObj: { [key: string]: any } = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        newObj[key] = stringifyBigInts(obj[key]);
+      }
+    }
+    return newObj;
+  }
+  return obj;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser(request);
@@ -13,11 +35,22 @@ export async function GET(request: NextRequest) {
       }, { status: 401 });
     }
 
-    const userAnalytics = await DatabaseStorage.getUserAnalyticsData(user.id);
+    const { searchParams } = new URL(request.url);
+    const includeCounts = searchParams.get('includeCounts') !== 'false';
+    const includeRecentAnalyses = searchParams.get('includeRecentAnalyses') !== 'false';
+    const recentAnalysesLimit = searchParams.has('recentAnalysesLimit')
+      ? parseInt(searchParams.get('recentAnalysesLimit')!, 10)
+      : 5;
+
+    const userAnalytics = await DatabaseStorage.getUserAnalyticsData(user.id, {
+      includeCounts,
+      includeRecentAnalyses,
+      recentAnalysesLimit,
+    });
 
     return NextResponse.json({
       success: true,
-      analytics: userAnalytics,
+      analytics: stringifyBigInts(userAnalytics),
     });
 
   } catch (error) {

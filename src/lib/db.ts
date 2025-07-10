@@ -162,21 +162,58 @@ export class DatabaseStorage {
     }
   }
 
-  static async getUploadsByUser(userId: string) {
+  static async getUploadsByUser(
+    userId: string,
+    options: {
+      includeAnalyses?: boolean;
+      page?: number;
+      limit?: number;
+    } = { includeAnalyses: true, page: 1, limit: 20 }
+  ) {
     try {
+      const { includeAnalyses, page = 1, limit = 20 } = options;
+      const skip = (page - 1) * limit;
+
       const uploads = await prisma.upload.findMany({
         where: { userId },
         orderBy: { uploadedAt: 'desc' },
-        include: {
-          analyses: {
-            orderBy: { createdAt: 'desc' },
-            include: {
-              insights: true,
-              callMetrics: true,
+        skip,
+        take: limit,
+      });
+
+      if (includeAnalyses) {
+        const uploadIds = uploads.map((u: { id: string }) => u.id);
+        const analyses = await prisma.analysis.findMany({
+          where: {
+            uploadId: {
+              in: uploadIds,
             },
           },
-        },
-      });
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            id: true,
+            status: true,
+            uploadId: true,
+            createdAt: true,
+          },
+        });
+
+        const analysesByUploadId = analyses.reduce((acc: Record<string, (typeof analyses)[0]>, analysis: (typeof analyses)[0]) => {
+          if (!acc[analysis.uploadId] || acc[analysis.uploadId].createdAt < analysis.createdAt) {
+            acc[analysis.uploadId] = analysis;
+          }
+          return acc;
+        }, {} as Record<string, (typeof analyses)[0]>);
+
+        uploads.forEach((upload: { id: string }) => {
+          const analysis = analysesByUploadId[upload.id];
+          if (analysis) {
+            (upload as any).analyses = [analysis];
+          }
+        });
+      }
       return uploads;
     } catch (error) {
       Logger.error('[Database] Error getting uploads by user:', error);
@@ -262,16 +299,27 @@ export class DatabaseStorage {
     }
   }
 
-  static async getAnalysisById(id: string) {
+  static async getAnalysisById(
+    id: string,
+    options: {
+      includeUser?: boolean;
+      includeUpload?: boolean;
+      includeInsights?: boolean;
+      includeCallMetrics?: boolean;
+    } = { includeUser: true, includeUpload: true, includeInsights: true, includeCallMetrics: true }
+  ) {
     try {
+      const { includeUser, includeUpload, includeInsights, includeCallMetrics } = options;
+
+      const include: any = {};
+      if (includeUser) include.user = true;
+      if (includeUpload) include.upload = true;
+      if (includeInsights) include.insights = true;
+      if (includeCallMetrics) include.callMetrics = true;
+
       const analysis = await prisma.analysis.findUnique({
         where: { id },
-        include: {
-          user: true,
-          upload: true,
-          insights: true,
-          callMetrics: true,
-        },
+        include,
       });
       return analysis;
     } catch (error) {
@@ -454,43 +502,52 @@ export class DatabaseStorage {
     }
   }
 
-  static async getUserAnalyticsData(userId: string) {
+  static async getUserAnalyticsData(
+    userId: string,
+    options: {
+      includeCounts?: boolean;
+      includeRecentAnalyses?: boolean;
+      recentAnalysesLimit?: number;
+    } = { includeCounts: true, includeRecentAnalyses: true, recentAnalysesLimit: 10 }
+  ) {
     try {
-      const totalUploads = await prisma.upload.count({
-        where: { userId },
-      });
+      const result: any = {};
 
-      const totalAnalyses = await prisma.analysis.count({
-        where: { userId },
-      });
+      if (options.includeCounts) {
+        const totalUploads = await prisma.upload.count({
+          where: { userId },
+        });
+        const totalAnalyses = await prisma.analysis.count({
+          where: { userId },
+        });
+        const completedAnalyses = await prisma.analysis.count({
+          where: { userId, status: 'COMPLETED' },
+        });
+        const failedAnalyses = await prisma.analysis.count({
+          where: { userId, status: 'FAILED' },
+        });
+        result.totalUploads = totalUploads;
+        result.totalAnalyses = totalAnalyses;
+        result.completedAnalyses = completedAnalyses;
+        result.failedAnalyses = failedAnalyses;
+        result.successRate = totalAnalyses > 0 ? (completedAnalyses / totalAnalyses) * 100 : 0;
+      }
 
-      const completedAnalyses = await prisma.analysis.count({
-        where: { userId, status: 'COMPLETED' },
-      });
+      if (options.includeRecentAnalyses) {
+        const recentAnalyses = await prisma.analysis.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: options.recentAnalysesLimit,
+          include: {
+            upload: true,
+            insights: true,
+            callMetrics: true,
+          },
+        });
+        result.recentAnalyses = recentAnalyses;
+      }
 
-      const failedAnalyses = await prisma.analysis.count({
-        where: { userId, status: 'FAILED' },
-      });
-
-      const recentAnalyses = await prisma.analysis.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-        include: {
-          upload: true,
-          insights: true,
-          callMetrics: true,
-        },
-      });
-
-      return {
-        totalUploads,
-        totalAnalyses,
-        completedAnalyses,
-        failedAnalyses,
-        successRate: totalAnalyses > 0 ? (completedAnalyses / totalAnalyses) * 100 : 0,
-        recentAnalyses,
-      };
+      return result;
     } catch (error) {
       Logger.error('[Database] Error getting user analytics data:', error);
       throw error;

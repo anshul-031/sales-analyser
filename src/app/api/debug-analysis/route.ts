@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         debug: {
           hasAnalyses: !!upload?.analyses && upload.analyses.length > 0,
           analysesCount: upload?.analyses?.length || 0,
-          analysesData: upload?.analyses?.map(a => ({
+          analysesData: upload?.analyses?.map((a: any) => ({
             id: a.id,
             status: a.status,
             hasResult: !!a.analysisResult,
@@ -65,25 +65,25 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all uploads for user
-    const uploads = await DatabaseStorage.getUploadsByUser(user.id);
+    const uploads = await DatabaseStorage.getUploadsByUser(user.id, { includeAnalyses: true });
     
     return NextResponse.json({
       success: true,
       type: 'all_uploads',
       count: uploads.length,
-      uploads: uploads.map(upload => ({
+      uploads: uploads.map((upload: any) => ({
         id: upload.id,
         originalName: upload.originalName,
         analysesCount: upload.analyses?.length || 0,
-        analyses: upload.analyses?.map(a => ({
+        analyses: upload.analyses?.map((a: any) => ({
           id: a.id,
           status: a.status,
           hasResult: !!a.analysisResult,
           hasTranscription: !!a.transcription,
           resultType: typeof a.analysisResult,
-          resultPreview: a.analysisResult ? 
-            (typeof a.analysisResult === 'string' ? 
-              a.analysisResult.substring(0, 100) + '...' : 
+          resultPreview: a.analysisResult ?
+            (typeof a.analysisResult === 'string' ?
+              a.analysisResult.substring(0, 100) + '...' :
               'Object with keys: ' + Object.keys(a.analysisResult).join(', ')
             ) : 'No result',
         }))

@@ -98,7 +98,7 @@ export default function CallAnalysisPage() {
       setLoading(true);
       Logger.info('[CallAnalysis] Loading call recordings for user:', user.id);
       
-      const response = await fetch('/api/upload?optimized=true');
+      const response = await fetch('/api/uploads-optimized');
       const result = await response.json();
       
       if (result.success) {
@@ -121,9 +121,12 @@ export default function CallAnalysisPage() {
         Logger.info('[CallAnalysis] Loaded', audioFiles.length, 'call recordings');
       } else {
         console.error('[CallAnalysis] Failed to load recordings:', result.error);
+        alert(`Failed to load recordings: ${result.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('[CallAnalysis] Error loading recordings:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`An error occurred while loading recordings: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -285,7 +288,8 @@ export default function CallAnalysisPage() {
       }
     } catch (error) {
       console.error('[CallAnalysis] Custom analysis error:', error);
-      alert('An error occurred during analysis');
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`An error occurred during analysis: ${message}`);
     } finally {
       setAnalyzingCustom(false);
     }

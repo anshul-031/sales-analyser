@@ -331,6 +331,17 @@ DELETE /api/cleanup?uploadId=upload_123&userId=user_123       # Delete specific 
 DELETE /api/cleanup?userId=user_123                           # Cleanup all completed
 ```
 
+### GraphQL Endpoint
+```bash
+POST /api/graphql
+Content-Type: application/json
+
+# Example Query:
+# {
+#   "query": "query { hello }"
+# }
+```
+
 ## 🧪 Testing
 
 ### Verify Setup

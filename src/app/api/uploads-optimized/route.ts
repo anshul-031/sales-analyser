@@ -14,7 +14,16 @@ export async function GET(request: NextRequest) {
       }, { status: 401 });
     }
 
-    const uploads = await DatabaseStorage.getUploadsByUser(user.id);
+    const { searchParams } = new URL(request.url);
+    const includeAnalyses = searchParams.get('includeAnalyses') !== 'false';
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+
+    const uploads = await DatabaseStorage.getUploadsByUser(user.id, {
+      includeAnalyses,
+      page,
+      limit,
+    });
 
     return NextResponse.json({
       success: true,

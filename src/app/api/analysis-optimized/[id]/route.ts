@@ -19,7 +19,18 @@ export async function GET(
 
     const analysisId = context.params.id;
 
-    const analysis = await DatabaseStorage.getAnalysisById(analysisId);
+    const { searchParams } = new URL(request.url);
+    const includeUser = searchParams.get('includeUser') !== 'false';
+    const includeUpload = searchParams.get('includeUpload') !== 'false';
+    const includeInsights = searchParams.get('includeInsights') !== 'false';
+    const includeCallMetrics = searchParams.get('includeCallMetrics') !== 'false';
+
+    const analysis = await DatabaseStorage.getAnalysisById(analysisId, {
+      includeUser,
+      includeUpload,
+      includeInsights,
+      includeCallMetrics,
+    });
 
     if (!analysis || analysis.userId !== user.id) {
       return NextResponse.json({
