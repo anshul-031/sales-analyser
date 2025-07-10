@@ -1,0 +1,373 @@
+// Mock dependencies - use factory functions to avoid hoisting issues
+jest.mock('../../../lib/auth', () => ({
+  getAuthenticatedUser: jest.fn(),
+}))
+
+jest.mock('../../../lib/db', () => ({
+  DatabaseStorage: {
+    createUpload: jest.fn(),
+    updateUpload: jest.fn(),
+    deleteUpload: jest.fn(),
+  },
+}))
+
+jest.mock('@aws-sdk/client-s3', () => ({
+  S3Client: jest.fn().mockImplementation(() => ({
+    send: jest.fn(),
+  })),
+  CreateMultipartUploadCommand: jest.fn(),
+  UploadPartCommand: jest.fn(),
+  CompleteMultipartUploadCommand: jest.fn(),
+  AbortMultipartUploadCommand: jest.fn(),
+}))
+
+jest.mock('@aws-sdk/s3-request-presigner', () => ({
+  getSignedUrl: jest.fn(),
+}))
+
+jest.mock('crypto', () => ({
+  randomUUID: jest.fn(() => 'test-uuid-123'),
+}))
+
+import { NextRequest, NextResponse } from 'next/server'
+import { POST } from '../upload-large/route'
+import { getAuthenticatedUser } from '../../../lib/auth'
+import { DatabaseStorage } from '../../../lib/db'
+import { S3Client } from '@aws-sdk/client-s3'
+
+// Helper function to extract JSON from Response object
+async function getResponseJSON(response: Response) {
+  try {
+    // Try to use json() method first if available
+    if (typeof response.json === 'function') {
+      return await response.json()
+    }
+    // Fallback to text() and parse
+    if (typeof response.text === 'function') {
+      const text = await response.text()
+      return JSON.parse(text)
+    }
+    // Last resort: check if response has _body or similar property (for mocked responses)
+    if ((response as any)._body) {
+      return JSON.parse((response as any)._body)
+    }
+    throw new Error('Cannot extract JSON from response')
+  } catch (error) {
+    console.error('Error extracting JSON from response:', error)
+    throw error
+  }
+}
+
+// Get the mocked functions for easier type handling
+const mockGetAuthenticatedUser = getAuthenticatedUser as jest.MockedFunction<typeof getAuthenticatedUser>
+const mockDatabaseStorage = DatabaseStorage as jest.Mocked<typeof DatabaseStorage>
+
+// Create a mock S3 instance
+const mockS3Instance = {
+  send: jest.fn(),
+}
+
+// Update the S3Client mock to return our mock instance
+;(S3Client as jest.MockedClass<typeof S3Client>).mockImplementation(() => mockS3Instance as any)
+
+describe('/api/upload-large', () => {
+  const mockUser = {
+    id: 'user123',
+    email: 'test@example.com',
+    firstName: 'John',
+    lastName: 'Doe',
+    isEmailVerified: true,
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    
+    // Setup environment variables
+    process.env.CLOUDFLARE_ACCOUNT_ID = 'test-account-id'
+    process.env.R2_ACCESS_KEY_ID = 'test-access-key'
+    process.env.R2_SECRET_ACCESS_KEY = 'test-secret-key'
+    process.env.R2_BUCKET_NAME = 'test-bucket'
+  })
+
+  afterEach(() => {
+    delete process.env.CLOUDFLARE_ACCOUNT_ID
+    delete process.env.R2_ACCESS_KEY_ID
+    delete process.env.R2_SECRET_ACCESS_KEY
+    delete process.env.R2_BUCKET_NAME
+  })
+
+  describe('Authentication', () => {
+    it('should require authentication', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(null)
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'start-upload' }),
+      })
+
+      const response = await POST(request)
+      
+      expect(response.status).toBe(401)
+      const data = await getResponseJSON(response)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Authentication required')
+    })
+  })
+
+  describe('start-upload action', () => {
+    it('should successfully start multipart upload', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockS3Instance.send.mockResolvedValue({
+        UploadId: 'test-upload-id-123',
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'start-upload',
+          fileName: 'test-file.mp3',
+          contentType: 'audio/mpeg',
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(200)
+      expect(data.success).toBe(true)
+      expect(data.uploadId).toBe('test-upload-id-123')
+      expect(data.key).toBe('uploads/user123/test-uuid-123/test-file.mp3')
+    })
+
+    it('should handle S3 errors during upload start', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockS3Instance.send.mockRejectedValue(new Error('S3 Error'))
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'start-upload',
+          fileName: 'test-file.mp3',
+          contentType: 'audio/mpeg',
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(500)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Failed to start upload')
+    })
+  })
+
+  describe('get-upload-urls action', () => {
+    it('should return signed URLs for parts', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      
+      const mockGetSignedUrl = require('@aws-sdk/s3-request-presigner').getSignedUrl
+      mockGetSignedUrl
+        .mockResolvedValueOnce('https://signed-url-1')
+        .mockResolvedValueOnce('https://signed-url-2')
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'get-upload-urls',
+          key: 'uploads/user123/test-uuid-123/test-file.mp3',
+          uploadId: 'test-upload-id',
+          parts: 2,
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(200)
+      expect(data.success).toBe(true)
+      expect(data.urls).toEqual([
+        'https://signed-url-1',
+        'https://signed-url-2',
+      ])
+    })
+
+    it('should handle errors when getting signed URLs', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      
+      const mockGetSignedUrl = require('@aws-sdk/s3-request-presigner').getSignedUrl
+      mockGetSignedUrl.mockRejectedValue(new Error('URL generation error'))
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'get-upload-urls',
+          key: 'uploads/user123/test-uuid-123/test-file.mp3',
+          uploadId: 'test-upload-id',
+          parts: 2,
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(500)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Failed to get upload URLs')
+    })
+  })
+
+  describe('complete-upload action', () => {
+    it('should complete upload and create database record', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockS3Instance.send.mockResolvedValue({}) // CompleteMultipartUploadCommand response
+      mockDatabaseStorage.createUpload.mockResolvedValue({
+        id: 'upload123',
+        filename: 'test-file.mp3',
+        originalName: 'Test File.mp3',
+        fileSize: BigInt(1024000),
+        mimeType: 'audio/mpeg',
+        fileUrl: 'uploads/user123/test-uuid-123/test-file.mp3',
+        userId: 'user123',
+        uploadedAt: new Date('2023-01-01T00:00:00Z'),
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'complete-upload',
+          key: 'uploads/user123/test-uuid-123/test-file.mp3',
+          uploadId: 'test-upload-id',
+          parts: [
+            { ETag: 'etag1', PartNumber: 1 },
+            { ETag: 'etag2', PartNumber: 2 },
+          ],
+          fileName: 'test-file.mp3',
+          contentType: 'audio/mpeg',
+          fileSize: 1024000,
+          originalContentType: 'audio/mpeg',
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(200)
+      expect(data.success).toBe(true)
+      expect(data.upload).toBeDefined()
+      expect(data.upload.id).toBe('upload123')
+    })
+
+    it('should reject files that are too large', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'complete-upload',
+          key: 'uploads/user123/test-uuid-123/large-file.mp3',
+          uploadId: 'test-upload-id',
+          parts: [],
+          fileName: 'large-file.mp3',
+          contentType: 'audio/mpeg',
+          fileSize: 300 * 1024 * 1024, // 300MB - exceeds 200MB limit
+          originalContentType: 'audio/mpeg',
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(400)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('File size too large. Maximum size is 200MB.')
+    })
+
+    it('should reject invalid file types', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'complete-upload',
+          key: 'uploads/user123/test-uuid-123/document.pdf',
+          uploadId: 'test-upload-id',
+          parts: [],
+          fileName: 'document.pdf',
+          contentType: 'application/pdf',
+          fileSize: 1024000,
+          originalContentType: 'application/pdf',
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(400)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Invalid file type. Only audio files are allowed.')
+    })
+  })
+
+  describe('abort-upload action', () => {
+    it('should abort multipart upload', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockS3Instance.send.mockResolvedValue({})
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'abort-upload',
+          key: 'uploads/user123/test-uuid-123/test-file.mp3',
+          uploadId: 'test-upload-id',
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(200)
+      expect(data.success).toBe(true)
+    })
+
+    it('should handle errors during upload abort', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockS3Instance.send.mockRejectedValue(new Error('Abort error'))
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'abort-upload',
+          key: 'uploads/user123/test-uuid-123/test-file.mp3',
+          uploadId: 'test-upload-id',
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(500)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Failed to abort upload')
+    })
+  })
+
+  describe('Invalid actions', () => {
+    it('should return error for invalid action', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+
+      const request = new NextRequest('http://localhost:3000/api/upload-large', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'invalid-action',
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(400)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Invalid action')
+    })
+  })
+})

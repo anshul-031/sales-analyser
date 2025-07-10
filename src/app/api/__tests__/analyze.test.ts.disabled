@@ -1,0 +1,567 @@
+// Mock dependencies - use factory functions to avoid hoisting issues
+jest.mock('../../../lib/auth', () => ({
+  getAuthenticatedUser: jest.fn(),
+}))
+
+jest.mock('../../../lib/db', () => ({
+  DatabaseStorage: {
+    getUpload: jest.fn(),
+    getUploadById: jest.fn(),
+    createAnalysis: jest.fn(),
+    updateAnalysis: jest.fn(),
+  },
+}))
+
+jest.mock('../../../lib/gemini', () => ({
+  geminiService: {
+    transcribeAudio: jest.fn(),
+    analyzeCall: jest.fn(),
+    analyzeTranscription: jest.fn(),
+  },
+}))
+
+jest.mock('../../../lib/analysis-monitor')
+
+jest.mock('@aws-sdk/client-s3', () => ({
+  S3Client: jest.fn().mockImplementation(() => ({
+    send: jest.fn(),
+  })),
+  GetObjectCommand: jest.fn(),
+  DeleteObjectCommand: jest.fn(),
+}))
+
+jest.mock('crypto', () => ({
+  randomUUID: jest.fn(() => 'test-uuid-123'),
+}))
+
+import { NextRequest, NextResponse } from 'next/server'
+import { POST } from '../analyze/route'
+import { getAuthenticatedUser } from '../../../lib/auth'
+import { DatabaseStorage } from '../../../lib/db'
+import { geminiService } from '../../../lib/gemini'
+import { S3Client } from '@aws-sdk/client-s3'
+
+// Helper function to extract JSON from Response object
+async function getResponseJSON(response: Response) {
+  try {
+    // Try to use json() method first if available
+    if (typeof response.json === 'function') {
+      return await response.json()
+    }
+    // Fallback to text() and parse
+    if (typeof response.text === 'function') {
+      const text = await response.text()
+      return JSON.parse(text)
+    }
+    // Last resort: check if response has _body or similar property (for mocked responses)
+    if ((response as any)._body) {
+      return JSON.parse((response as any)._body)
+    }
+    throw new Error('Cannot extract JSON from response')
+  } catch (error) {
+    console.error('Error extracting JSON from response:', error)
+    throw error
+  }
+}
+
+// Get the mocked functions for easier type handling
+const mockGetAuthenticatedUser = getAuthenticatedUser as jest.MockedFunction<typeof getAuthenticatedUser>
+const mockDatabaseStorage = DatabaseStorage as jest.Mocked<typeof DatabaseStorage>
+const mockGeminiService = geminiService as jest.Mocked<typeof geminiService>
+
+// Create a mock S3 instance
+const mockS3Instance = {
+  send: jest.fn(),
+}
+
+// Update the S3Client mock to return our mock instance
+;(S3Client as jest.MockedClass<typeof S3Client>).mockImplementation(() => mockS3Instance as any)
+
+describe('/api/analyze', () => {
+  const mockUser = {
+    id: 'user123',
+    email: 'test@example.com',
+    password: 'hashedPassword',
+    firstName: 'John',
+    lastName: 'Doe',
+    isEmailVerified: true,
+    emailVerificationToken: null,
+    emailVerificationExpires: null,
+    passwordResetToken: null,
+    passwordResetExpires: null,
+    createdAt: new Date('2023-01-01T00:00:00Z'),
+    updatedAt: new Date('2023-01-01T00:00:00Z'),
+  }
+
+  const mockUpload = {
+    id: 'upload123',
+    filename: 'test-audio.mp3',
+    originalName: 'Test Audio.mp3',
+    fileSize: BigInt(1024000),
+    mimeType: 'audio/mpeg',
+    fileUrl: 'uploads/user123/test-uuid/test-audio.mp3',
+    userId: 'user123',
+    uploadedAt: new Date('2023-01-01T00:00:00Z'),
+    user: mockUser,
+    analyses: [],
+  }
+
+// Mock the database return types to match Prisma schema
+const mockUploadWithUser = {
+  id: 'upload123',
+  filename: 'test-audio.mp3',
+  originalName: 'Test Audio.mp3',
+  fileSize: BigInt(1024000),
+  mimeType: 'audio/mpeg',
+  fileUrl: 'uploads/user123/test-uuid/test-audio.mp3',
+  userId: 'user123',
+  uploadedAt: new Date('2023-01-01T00:00:00Z'),
+  user: {
+    id: 'user123',
+    email: 'test@example.com',
+    password: 'hashed-password',
+    firstName: 'John',
+    lastName: 'Doe',
+    isEmailVerified: true,
+    emailVerificationToken: null,
+    emailVerificationExpires: null,
+    passwordResetToken: null,
+    passwordResetExpires: null,
+    createdAt: new Date('2023-01-01T00:00:00Z'),
+    updatedAt: new Date('2023-01-01T00:00:00Z'),
+  },
+  analyses: [],
+} as any
+
+const mockAnalysisWithRelations = {
+  id: 'analysis123',
+  status: 'PROCESSING',
+  analysisType: 'DEFAULT',
+  customPrompt: null,
+  customParameters: null,
+  transcription: null,
+  analysisResult: null,
+  errorMessage: null,
+  analysisDuration: null,
+  userId: 'user123',
+  uploadId: 'upload123',
+  createdAt: new Date('2023-01-01T00:00:00Z'),
+  updatedAt: new Date('2023-01-01T00:00:00Z'),
+  user: {
+    id: 'user123',
+    email: 'test@example.com',
+    password: 'hashed-password',
+    firstName: 'John',
+    lastName: 'Doe',
+    isEmailVerified: true,
+    emailVerificationToken: null,
+    emailVerificationExpires: null,
+    passwordResetToken: null,
+    passwordResetExpires: null,
+    createdAt: new Date('2023-01-01T00:00:00Z'),
+    updatedAt: new Date('2023-01-01T00:00:00Z'),
+  },
+  upload: mockUploadWithUser,
+  callMetrics: [],
+  insights: [],
+} as any
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    
+    // Setup environment variables
+    process.env.CLOUDFLARE_ACCOUNT_ID = 'test-account-id'
+    process.env.R2_ACCESS_KEY_ID = 'test-access-key'
+    process.env.R2_SECRET_ACCESS_KEY = 'test-secret-key'
+    process.env.R2_BUCKET_NAME = 'test-bucket'
+    process.env.AUTO_DELETE_FILES = 'false'
+  })
+
+  afterEach(() => {
+    delete process.env.CLOUDFLARE_ACCOUNT_ID
+    delete process.env.R2_ACCESS_KEY_ID
+    delete process.env.R2_SECRET_ACCESS_KEY
+    delete process.env.R2_BUCKET_NAME
+    delete process.env.AUTO_DELETE_FILES
+  })
+
+  describe('Authentication', () => {
+    it('should require authentication', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(null)
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ uploadId: 'upload123' }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(401)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Authentication required')
+    })
+  })
+
+  describe('Upload validation', () => {
+    it('should require uploadId parameter', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(400)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Upload ID is required')
+    })
+
+    it('should handle non-existent upload', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockDatabaseStorage.getUploadById.mockResolvedValue(null)
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ uploadId: 'nonexistent' }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(404)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Upload not found')
+    })
+
+    it('should prevent analyzing uploads from other users', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      
+      const otherUserUpload = {
+        ...mockUpload,
+        userId: 'other-user',
+      }
+      
+      mockDatabaseStorage.getUploadById.mockResolvedValue(otherUserUpload)
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ uploadId: 'upload123' }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(403)
+      expect(data.success).toBe(false)
+      expect(data.error).toBe('Access denied')
+    })
+  })
+
+  describe('Analysis creation', () => {
+    it('should create analysis record and start processing', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockDatabaseStorage.getUploadById.mockResolvedValue(mockUpload)
+      
+      const mockAnalysis = {
+        id: 'analysis123',
+        status: 'PROCESSING' as const,
+        analysisType: 'default' as const,
+        userId: 'user123',
+        uploadId: 'upload123',
+        createdAt: new Date('2023-01-01T00:00:00Z'),
+        updatedAt: new Date('2023-01-01T00:00:00Z'),
+        upload: mockUpload,
+      }
+      
+      mockDatabaseStorage.createAnalysis.mockResolvedValue(mockAnalysis)
+      
+      // Mock S3 file retrieval
+      const mockFileStream = {
+        transformToByteArray: jest.fn().mockResolvedValue(new Uint8Array([1, 2, 3, 4])),
+      }
+      mockS3Instance.send.mockResolvedValue({ Body: mockFileStream })
+      
+      // Mock Gemini service
+      mockGeminiService.transcribeAudio.mockResolvedValue('This is a test transcription.')
+      mockGeminiService.analyzeTranscription.mockResolvedValue({
+        summary: 'Test summary',
+        sentiment: 'positive',
+        keyPoints: ['Point 1', 'Point 2'],
+        confidence: 0.95,
+      })
+      
+      mockDatabaseStorage.updateAnalysis.mockResolvedValue({
+        ...mockAnalysis,
+        status: 'COMPLETED' as const,
+        transcription: 'This is a test transcription.',
+        analysisResult: {
+          summary: 'Test summary',
+          sentiment: 'positive',
+          keyPoints: ['Point 1', 'Point 2'],
+          confidence: 0.95,
+        },
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ uploadId: 'upload123' }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(200)
+      expect(data.success).toBe(true)
+      expect(data.analysis).toBeDefined()
+      expect(data.analysis.id).toBe('analysis123')
+      expect(mockDatabaseStorage.createAnalysis).toHaveBeenCalled()
+    })
+
+    it('should handle custom analysis parameters', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockDatabaseStorage.getUploadById.mockResolvedValue(mockUpload)
+      
+      const mockAnalysis = {
+        id: 'analysis123',
+        status: 'PROCESSING' as const,
+        analysisType: 'custom' as const,
+        customPrompt: 'Custom analysis prompt',
+        userId: 'user123',
+        uploadId: 'upload123',
+        createdAt: new Date('2023-01-01T00:00:00Z'),
+        updatedAt: new Date('2023-01-01T00:00:00Z'),
+        upload: mockUpload,
+      }
+      
+      mockDatabaseStorage.createAnalysis.mockResolvedValue(mockAnalysis)
+      
+      // Mock S3 and Gemini services
+      const mockFileStream = {
+        transformToByteArray: jest.fn().mockResolvedValue(new Uint8Array([1, 2, 3, 4])),
+      }
+      mockS3Instance.send.mockResolvedValue({ Body: mockFileStream })
+      mockGeminiService.transcribeAudio.mockResolvedValue('This is a test transcription.')
+      mockGeminiService.analyzeTranscription.mockResolvedValue({
+        summary: 'Custom analysis result',
+        confidence: 0.90,
+      })
+      
+      mockDatabaseStorage.updateAnalysis.mockResolvedValue({
+        ...mockAnalysis,
+        status: 'COMPLETED' as const,
+        transcription: 'This is a test transcription.',
+        analysisResult: {
+          summary: 'Custom analysis result',
+          confidence: 0.90,
+        },
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({
+          uploadId: 'upload123',
+          analysisType: 'custom',
+          customPrompt: 'Custom analysis prompt',
+        }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(200)
+      expect(data.success).toBe(true)
+      expect(data.analysis).toBeDefined()
+      expect(mockDatabaseStorage.createAnalysis).toHaveBeenCalledWith(
+        expect.objectContaining({
+          analysisType: 'custom',
+          customPrompt: 'Custom analysis prompt',
+        }),
+        mockUpload
+      )
+    })
+  })
+
+  describe('Error handling', () => {
+    it('should handle S3 file retrieval errors', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockDatabaseStorage.getUploadById.mockResolvedValue(mockUpload)
+      
+      const mockAnalysis = {
+        id: 'analysis123',
+        status: 'PROCESSING' as const,
+        analysisType: 'default' as const,
+        userId: 'user123',
+        uploadId: 'upload123',
+        createdAt: new Date('2023-01-01T00:00:00Z'),
+        updatedAt: new Date('2023-01-01T00:00:00Z'),
+        upload: mockUpload,
+      }
+      
+      mockDatabaseStorage.createAnalysis.mockResolvedValue(mockAnalysis)
+      mockS3Instance.send.mockRejectedValue(new Error('S3 retrieval failed'))
+      mockDatabaseStorage.updateAnalysis.mockResolvedValue({
+        ...mockAnalysis,
+        status: 'FAILED' as const,
+        errorMessage: 'Failed to retrieve file from storage: S3 retrieval failed',
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ uploadId: 'upload123' }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(200) // Still returns 200 but with failed analysis
+      expect(data.success).toBe(true)
+      expect(data.analysis.status).toBe('FAILED')
+      expect(data.analysis.errorMessage).toContain('Failed to retrieve file from storage')
+    })
+
+    it('should handle Gemini API transcription errors', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockDatabaseStorage.getUploadById.mockResolvedValue(mockUpload)
+      
+      const mockAnalysis = {
+        id: 'analysis123',
+        status: 'PROCESSING' as const,
+        analysisType: 'default' as const,
+        userId: 'user123',
+        uploadId: 'upload123',
+        createdAt: new Date('2023-01-01T00:00:00Z'),
+        updatedAt: new Date('2023-01-01T00:00:00Z'),
+        upload: mockUpload,
+      }
+      
+      mockDatabaseStorage.createAnalysis.mockResolvedValue(mockAnalysis)
+      
+      const mockFileStream = {
+        transformToByteArray: jest.fn().mockResolvedValue(new Uint8Array([1, 2, 3, 4])),
+      }
+      mockS3Instance.send.mockResolvedValue({ Body: mockFileStream })
+      mockGeminiService.transcribeAudio.mockRejectedValue(new Error('Transcription failed'))
+      
+      mockDatabaseStorage.updateAnalysis.mockResolvedValue({
+        ...mockAnalysis,
+        status: 'FAILED' as const,
+        errorMessage: 'Transcription failed: Transcription failed',
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ uploadId: 'upload123' }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(200)
+      expect(data.success).toBe(true)
+      expect(data.analysis.status).toBe('FAILED')
+      expect(data.analysis.errorMessage).toContain('Transcription failed')
+    })
+
+    it('should handle analysis timeout errors', async () => {
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockDatabaseStorage.getUploadById.mockResolvedValue(mockUpload)
+      
+      const mockAnalysis = {
+        id: 'analysis123',
+        status: 'PROCESSING' as const,
+        analysisType: 'default' as const,
+        userId: 'user123',
+        uploadId: 'upload123',
+        createdAt: new Date('2023-01-01T00:00:00Z'),
+        updatedAt: new Date('2023-01-01T00:00:00Z'),
+        upload: mockUpload,
+      }
+      
+      mockDatabaseStorage.createAnalysis.mockResolvedValue(mockAnalysis)
+      
+      const mockFileStream = {
+        transformToByteArray: jest.fn().mockResolvedValue(new Uint8Array([1, 2, 3, 4])),
+      }
+      mockS3Instance.send.mockResolvedValue({ Body: mockFileStream })
+      
+      // Mock a timeout scenario
+      mockGeminiService.transcribeAudio.mockImplementation(() => 
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Operation timeout')), 100)
+        )
+      )
+      
+      mockDatabaseStorage.updateAnalysis.mockResolvedValue({
+        ...mockAnalysis,
+        status: 'FAILED' as const,
+        errorMessage: 'Analysis timeout: Operation timeout',
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ uploadId: 'upload123' }),
+      })
+
+      const response = await POST(request)
+      const data = await getResponseJSON(response)
+
+      expect(response.status).toBe(200)
+      expect(data.success).toBe(true)
+      expect(data.analysis.status).toBe('FAILED')
+    })
+  })
+
+  describe('File cleanup', () => {
+    it('should delete files when AUTO_DELETE_FILES is enabled', async () => {
+      process.env.AUTO_DELETE_FILES = 'true'
+      
+      mockGetAuthenticatedUser.mockResolvedValue(mockUser)
+      mockDatabaseStorage.getUploadById.mockResolvedValue(mockUpload)
+      
+      const mockAnalysis = {
+        id: 'analysis123',
+        status: 'PROCESSING' as const,
+        analysisType: 'default' as const,
+        userId: 'user123',
+        uploadId: 'upload123',
+        createdAt: new Date('2023-01-01T00:00:00Z'),
+        updatedAt: new Date('2023-01-01T00:00:00Z'),
+        upload: mockUpload,
+      }
+      
+      mockDatabaseStorage.createAnalysis.mockResolvedValue(mockAnalysis)
+      
+      const mockFileStream = {
+        transformToByteArray: jest.fn().mockResolvedValue(new Uint8Array([1, 2, 3, 4])),
+      }
+      mockS3Instance.send.mockResolvedValue({ Body: mockFileStream })
+      mockGeminiService.transcribeAudio.mockResolvedValue('Test transcription')
+      mockGeminiService.analyzeTranscription.mockResolvedValue({ summary: 'Test' })
+      
+      mockDatabaseStorage.updateAnalysis.mockResolvedValue({
+        ...mockAnalysis,
+        status: 'COMPLETED' as const,
+        transcription: 'Test transcription',
+        analysisResult: { summary: 'Test' },
+      })
+
+      const request = new NextRequest('http://localhost:3000/api/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ uploadId: 'upload123' }),
+      })
+
+      await POST(request)
+
+      // Verify delete command was called
+      expect(mockS3Instance.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          constructor: { name: 'DeleteObjectCommand' }
+        })
+      )
+    })
+  })
+})

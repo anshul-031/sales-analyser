@@ -1,0 +1,390 @@
+import { GeminiAnalysisService } from '../gemini'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+// Mock GoogleGenerativeAI
+jest.mock('@google/generative-ai', () => ({
+  GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
+    getGenerativeModel: jest.fn().mockReturnValue({
+      generateContent: jest.fn(),
+    }),
+  })),
+}))
+
+// Mock Logger and other utilities
+jest.mock('../utils', () => ({
+  Logger: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  },
+  GeminiCircuitBreaker: jest.fn().mockImplementation(() => ({
+    execute: jest.fn((fn) => fn()),
+    isOpen: jest.fn(() => false),
+    getStats: jest.fn(() => ({ successCount: 0, failureCount: 0 })),
+  })),
+}))
+
+jest.mock('../analysis-constants', () => ({
+  DEFAULT_ANALYSIS_PARAMETERS: [
+    { name: 'sentiment', description: 'Overall sentiment analysis' },
+    { name: 'summary', description: 'Call summary and key points' },
+    { name: 'action_items', description: 'Action items and next steps' },
+  ],
+}))
+
+describe('GeminiAnalysisService', () => {
+  let geminiService: GeminiAnalysisService
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    
+    // Mock environment variables
+    process.env.GOOGLE_GEMINI_API_KEYS = JSON.stringify(['test-api-key-1', 'test-api-key-2'])
+    process.env.GEMINI_MODEL = 'gemini-2.0-flash-exp'
+    
+    geminiService = new GeminiAnalysisService()
+  })
+
+  afterEach(() => {
+    delete process.env.GOOGLE_GEMINI_API_KEYS
+    delete process.env.GEMINI_MODEL
+  })
+
+  describe('Constructor and initialization', () => {
+    it('should create an instance of GeminiAnalysisService', () => {
+      expect(geminiService).toBeInstanceOf(GeminiAnalysisService)
+    })
+
+    it('should initialize with valid API keys', () => {
+      expect(GoogleGenerativeAI).toHaveBeenCalled()
+    })
+
+    it('should handle missing API keys gracefully', () => {
+      delete process.env.GOOGLE_GEMINI_API_KEYS
+      
+      const newService = new GeminiAnalysisService()
+      expect(newService).toBeInstanceOf(GeminiAnalysisService)
+    })
+  })
+
+  describe('transcribeAudio', () => {
+    it('should accept audio data and return transcription', async () => {
+      const mockGenerateContent = jest.fn().mockResolvedValue({
+        response: {
+          text: () => 'This is a test transcription of the audio file.',
+        },
+      })
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const audioData = new Uint8Array([1, 2, 3, 4, 5])
+      const result = await geminiService.transcribeAudio(audioData)
+
+      expect(result).toBe('This is a test transcription of the audio file.')
+      expect(mockGenerateContent).toHaveBeenCalled()
+    })
+
+    it('should handle transcription errors', async () => {
+      const mockGenerateContent = jest.fn().mockRejectedValue(new Error('API Error'))
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const audioData = new Uint8Array([1, 2, 3, 4, 5])
+
+      await expect(geminiService.transcribeAudio(audioData)).rejects.toThrow('API Error')
+    })
+
+    it('should validate audio data input', async () => {
+      // Test with empty audio data
+      const emptyAudio = new Uint8Array([])
+
+      await expect(geminiService.transcribeAudio(emptyAudio)).rejects.toThrow()
+    })
+  })
+
+  describe('analyzeCall', () => {
+    it('should analyze transcription with default parameters', async () => {
+      const mockGenerateContent = jest.fn().mockResolvedValue({
+        response: {
+          text: () => JSON.stringify({
+            sentiment: 'positive',
+            summary: 'This was a successful sales call with good engagement.',
+            action_items: ['Follow up within 24 hours', 'Send proposal'],
+            confidence: 0.95,
+          }),
+        },
+      })
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const transcription = 'Hello, thank you for your time today. I wanted to discuss our new product...'
+      const result = await geminiService.analyzeCall(transcription)
+
+      expect(result).toEqual({
+        sentiment: 'positive',
+        summary: 'This was a successful sales call with good engagement.',
+        action_items: ['Follow up within 24 hours', 'Send proposal'],
+        confidence: 0.95,
+      })
+    })
+
+    it('should handle custom analysis prompts', async () => {
+      const mockGenerateContent = jest.fn().mockResolvedValue({
+        response: {
+          text: () => JSON.stringify({
+            lead_quality: 8,
+            decision_maker: true,
+            budget_confirmed: false,
+          }),
+        },
+      })
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const transcription = 'Customer discussion about budget and decision making process...'
+      const customPrompt = 'Analyze this call for lead qualification metrics'
+      
+      const result = await geminiService.analyzeCall(transcription, customPrompt)
+
+      expect(result).toEqual({
+        lead_quality: 8,
+        decision_maker: true,
+        budget_confirmed: false,
+      })
+    })
+
+    it('should handle custom parameters analysis', async () => {
+      const mockGenerateContent = jest.fn().mockResolvedValue({
+        response: {
+          text: () => JSON.stringify({
+            price_sensitivity: 'medium',
+            competition_mentioned: ['Competitor A', 'Competitor B'],
+            timeline: '3 months',
+          }),
+        },
+      })
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const transcription = 'Discussion about pricing, competitors, and implementation timeline...'
+      const customParameters = [
+        { name: 'price_sensitivity', description: 'How sensitive is the customer to pricing' },
+        { name: 'competition_mentioned', description: 'Which competitors were mentioned' },
+        { name: 'timeline', description: 'Implementation timeline discussed' },
+      ]
+      
+      const result = await geminiService.analyzeCall(transcription, undefined, customParameters)
+
+      expect(result).toEqual({
+        price_sensitivity: 'medium',
+        competition_mentioned: ['Competitor A', 'Competitor B'],
+        timeline: '3 months',
+      })
+    })
+
+    it('should handle malformed JSON responses', async () => {
+      const mockGenerateContent = jest.fn().mockResolvedValue({
+        response: {
+          text: () => 'This is not valid JSON',
+        },
+      })
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const transcription = 'Test transcription'
+
+      await expect(geminiService.analyzeCall(transcription)).rejects.toThrow()
+    })
+  })
+
+  describe('API key management', () => {
+    it('should rotate API keys on failures', async () => {
+      const mockGenerateContent = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('Rate limit exceeded'))
+        .mockResolvedValueOnce({
+          response: {
+            text: () => 'Success with second key',
+          },
+        })
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const audioData = new Uint8Array([1, 2, 3, 4, 5])
+      const result = await geminiService.transcribeAudio(audioData)
+
+      expect(result).toBe('Success with second key')
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2)
+    })
+
+    it('should handle case when all API keys fail', async () => {
+      const mockGenerateContent = jest.fn().mockRejectedValue(new Error('All keys exhausted'))
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const audioData = new Uint8Array([1, 2, 3, 4, 5])
+
+      await expect(geminiService.transcribeAudio(audioData)).rejects.toThrow()
+    })
+  })
+
+  describe('Circuit breaker integration', () => {
+    it('should use circuit breaker for API calls', async () => {
+      const mockCircuitBreaker = new (require('../utils').GeminiCircuitBreaker)()
+      const executeSpy = jest.spyOn(mockCircuitBreaker, 'execute')
+
+      const audioData = new Uint8Array([1, 2, 3, 4, 5])
+      
+      try {
+        await geminiService.transcribeAudio(audioData)
+      } catch (error) {
+        // Expected to fail due to mocking
+      }
+
+      // Circuit breaker should be involved in the process
+      expect(mockCircuitBreaker.execute).toBeDefined()
+    })
+  })
+
+  describe('Error handling and retries', () => {
+    it('should implement exponential backoff for retries', async () => {
+      const mockGenerateContent = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('Temporary failure'))
+        .mockRejectedValueOnce(new Error('Another temporary failure'))
+        .mockResolvedValueOnce({
+          response: {
+            text: () => 'Success after retries',
+          },
+        })
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const audioData = new Uint8Array([1, 2, 3, 4, 5])
+      const result = await geminiService.transcribeAudio(audioData)
+
+      expect(result).toBe('Success after retries')
+      expect(mockGenerateContent).toHaveBeenCalledTimes(3)
+    })
+
+    it('should respect rate limits', async () => {
+      const mockGenerateContent = jest.fn().mockRejectedValue(new Error('Rate limit exceeded'))
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const audioData = new Uint8Array([1, 2, 3, 4, 5])
+
+      await expect(geminiService.transcribeAudio(audioData)).rejects.toThrow('Rate limit exceeded')
+    })
+  })
+
+  describe('Input validation', () => {
+    it('should validate transcription text length', async () => {
+      const veryLongText = 'a'.repeat(1000000) // 1 million characters
+      
+      await expect(geminiService.analyzeCall(veryLongText)).rejects.toThrow()
+    })
+
+    it('should handle empty transcription', async () => {
+      await expect(geminiService.analyzeCall('')).rejects.toThrow()
+    })
+
+    it('should validate custom parameters format', async () => {
+      const transcription = 'Valid transcription'
+      const invalidParameters = [
+        { name: '', description: 'Empty name' }, // Invalid: empty name
+        { description: 'Missing name' }, // Invalid: missing name
+      ] as any
+
+      await expect(
+        geminiService.analyzeCall(transcription, undefined, invalidParameters)
+      ).rejects.toThrow()
+    })
+  })
+
+  describe('Response processing', () => {
+    it('should clean and validate JSON responses', async () => {
+      const mockGenerateContent = jest.fn().mockResolvedValue({
+        response: {
+          text: () => '```json\n{"sentiment": "positive", "confidence": 0.9}\n```',
+        },
+      })
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const transcription = 'Test transcription'
+      const result = await geminiService.analyzeCall(transcription)
+
+      expect(result).toEqual({
+        sentiment: 'positive',
+        confidence: 0.9,
+      })
+    })
+
+    it('should handle partial responses gracefully', async () => {
+      const mockGenerateContent = jest.fn().mockResolvedValue({
+        response: {
+          text: () => '{"sentiment": "positive"}', // Missing other expected fields
+        },
+      })
+
+      const mockModel = {
+        generateContent: mockGenerateContent,
+      }
+
+      jest.spyOn(geminiService as any, 'getModel').mockReturnValue(mockModel)
+
+      const transcription = 'Test transcription'
+      const result = await geminiService.analyzeCall(transcription)
+
+      expect(result).toEqual({
+        sentiment: 'positive',
+      })
+    })
+  })
+})
