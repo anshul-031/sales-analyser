@@ -53,11 +53,13 @@ export default function CallHistoryPage() {
   const selectedRecordingIdRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState('analysis');
   const [translatedText, setTranslatedText] = useState<string>('');
+  const [translatedSegments, setTranslatedSegments] = useState<any[]>([]);
   const [translating, setTranslating] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState('en');
-  const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(false);
+  const [translationViewMode, setTranslationViewMode] = useState<'side-by-side' | 'translated-only'>('side-by-side');
+  const [showDetailedAnalysis, setShowDetailedAnalysis] = useState(true); // Default to true for better UX
   const [showChatbot, setShowChatbot] = useState(false);
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(['speaker-analysis', 'transcription-segments']));
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(['transcription-segments'])); // Speaker analysis expanded by default
   const [loadingAnalysisData, setLoadingAnalysisData] = useState(false);
   const [loadedAnalysisIds, setLoadedAnalysisIds] = useState<Set<string>>(new Set());
   const [retryAttempts, setRetryAttempts] = useState<Map<string, number>>(new Map());
@@ -539,6 +541,7 @@ export default function CallHistoryPage() {
     // Clear translation when switching tabs
     if (tab !== 'transcription') {
       setTranslatedText('');
+      setTranslatedSegments([]);
     }
     // Close chatbot when switching to other tabs
     if (tab !== 'chat') {
@@ -546,35 +549,103 @@ export default function CallHistoryPage() {
     }
   };
 
-  const translateTranscription = async (text: string, targetLang: string) => {
-    console.log('[CallHistory] Translating text to:', targetLang);
+  const translateTranscription = async (transcriptionData: any, targetLang: string) => {
+    console.log('[CallHistory] Starting optimized single-call translation to:', targetLang);
     setTranslating(true);
+    setTranslatedSegments([]);
     
     try {
-      const response = await fetch('/api/translate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: text,
-          targetLanguage: targetLang,
-          sourceLanguage: 'auto' // Auto-detect source language
-        }),
-      });
+      if (typeof transcriptionData === 'object' && transcriptionData?.diarized_transcription) {
+        const segments = transcriptionData.diarized_transcription;
+        
+        // Create a structured format for single API call
+        const structuredText = segments.map((segment: any, index: number) => 
+          `SEGMENT_${index}_START|||${segment.speaker}|||${segment.text}|||SEGMENT_${index}_END`
+        ).join('\n');
+        
+        console.log('[CallHistory] Sending all segments in single API call...');
+        
+        const response = await fetch('/api/translate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: structuredText,
+            targetLanguage: targetLang,
+            sourceLanguage: 'auto',
+            preserveStructure: true,
+            isSegmentedTranscription: true
+          }),
+        });
 
-      const result = await response.json();
-      console.log('[CallHistory] Translation result:', result);
-
-      if (result.success) {
-        setTranslatedText(result.translatedText);
+        const result = await response.json();
+        
+        if (result.success) {
+          // Parse the structured response back into segments
+          const translatedSegments: any[] = [];
+          const translatedLines = result.translatedText.split('\n');
+          
+          translatedLines.forEach((line: string, index: number) => {
+            const segmentMatch = line.match(/SEGMENT_(\d+)_START\|\|\|([^|]+)\|\|\|(.+)\|\|\|SEGMENT_\d+_END/);
+            if (segmentMatch) {
+              const [, segmentIndex, speaker, translatedText] = segmentMatch;
+              const originalSegment = segments[parseInt(segmentIndex)];
+              
+              if (originalSegment) {
+                translatedSegments.push({
+                  ...originalSegment,
+                  originalText: originalSegment.text,
+                  translatedText: translatedText.trim()
+                });
+              }
+            }
+          });
+          
+          // If structured parsing fails, fall back to simple splitting
+          if (translatedSegments.length === 0) {
+            console.warn('[CallHistory] Structured parsing failed, using fallback method');
+            const fallbackLines = result.translatedText.split('\n').filter((line: string) => line.trim());
+            
+            segments.forEach((originalSegment: any, index: number) => {
+              translatedSegments.push({
+                ...originalSegment,
+                originalText: originalSegment.text,
+                translatedText: fallbackLines[index] || originalSegment.text
+              });
+            });
+          }
+          
+          setTranslatedSegments(translatedSegments);
+          console.log('[CallHistory] Single-call translation completed:', translatedSegments.length, 'segments');
+        } else {
+          throw new Error(result.error || 'Translation failed');
+        }
       } else {
-        console.error('[CallHistory] Translation failed:', result.error);
-        alert('Translation failed: ' + (result.error || 'Unknown error'));
+        // Fallback for plain text transcription
+        const response = await fetch('/api/translate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: typeof transcriptionData === 'string' ? transcriptionData : JSON.stringify(transcriptionData),
+            targetLanguage: targetLang,
+            sourceLanguage: 'auto'
+          }),
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+          setTranslatedText(result.translatedText);
+        } else {
+          throw new Error(result.error || 'Translation failed');
+        }
       }
     } catch (error) {
       console.error('[CallHistory] Translation error:', error);
-      alert('An error occurred during translation');
+      alert('An error occurred during translation: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setTranslating(false);
     }
@@ -608,8 +679,8 @@ export default function CallHistoryPage() {
       }
     }
     
-    const textToTranslate = getTranscriptionText(parsedData);
-    translateTranscription(textToTranslate, targetLanguage);
+    // Use the new segment-wise translation
+    translateTranscription(parsedData, targetLanguage);
   };
 
   const languageOptions = [
@@ -965,23 +1036,25 @@ export default function CallHistoryPage() {
                                     Expand All
                                   </button>
                                   <button
-                                    onClick={() => setCollapsedSections(new Set(['speaker-analysis', 'transcription-segments']))}
+                                    onClick={() => setCollapsedSections(new Set(['speaker-analysis', 'transcription-segments', 'translated-content']))}
                                     className="px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
                                   >
                                     Collapse All
                                   </button>
                                 </div>
 
-                                {/* Toggle for detailed analysis */}
-                                <label className="flex items-center gap-2 text-sm text-gray-600">
+                                {/* Enhanced Toggle for detailed analysis with better visibility */}
+                                <div className="flex items-center gap-2 bg-indigo-50 px-3 py-2 rounded-md border border-indigo-200">
                                   <input
                                     type="checkbox"
                                     checked={showDetailedAnalysis}
                                     onChange={(e) => setShowDetailedAnalysis(e.target.checked)}
                                     className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                   />
-                                  Show detailed metrics
-                                </label>
+                                  <label className="text-sm font-medium text-indigo-800 cursor-pointer">
+                                    Show Additional Details (Timestamps & Confidence)
+                                  </label>
+                                </div>
 
                                 <select
                                   value={targetLanguage}
@@ -1013,13 +1086,32 @@ export default function CallHistoryPage() {
                                   )}
                                 </button>
                                 
-                                {translatedText && (
-                                  <button
-                                    onClick={() => setTranslatedText('')}
-                                    className="px-3 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 text-sm transition-colors"
-                                  >
-                                    Show Original
-                                  </button>
+                                {/* Info about translation feature */}
+                                <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                                  Segment-wise translation preserves speaker analysis & sentiment data
+                                </div>
+                                
+                                {/* Translation View Mode Toggle */}
+                                {(translatedSegments.length > 0 || translatedText) && (
+                                  <div className="flex items-center gap-2">
+                                    <select
+                                      value={translationViewMode}
+                                      onChange={(e) => setTranslationViewMode(e.target.value as 'side-by-side' | 'translated-only')}
+                                      className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    >
+                                      <option value="side-by-side">Side-by-Side Comparison</option>
+                                      <option value="translated-only">Translation Only</option>
+                                    </select>
+                                    <button
+                                      onClick={() => {
+                                        setTranslatedText('');
+                                        setTranslatedSegments([]);
+                                      }}
+                                      className="px-3 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 text-sm transition-colors"
+                                    >
+                                      Show Original
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -1068,8 +1160,202 @@ export default function CallHistoryPage() {
                                   </div>
                                 </div>
 
-                                {/* Show translation if available */}
-                                {translatedText ? (
+                                {/* Show segment-wise translation if available */}
+                                {translatedSegments.length > 0 ? (
+                                  <div className="space-y-4">
+                                    <div className="bg-blue-50 p-3 rounded-md">
+                                      <span className="text-sm font-medium text-blue-800">
+                                        Segment-wise Translation ({languageOptions.find(l => l.code === targetLanguage)?.name})
+                                      </span>
+                                    </div>
+
+                                    {/* Show speaker analysis even for translated content */}
+                                    {(sentimentAnalysis.length > 0 || toneAnalysis.length > 0) && (
+                                      <div className="border border-gray-200 rounded-lg mb-4">
+                                        <button
+                                          onClick={() => toggleSection('speaker-analysis')}
+                                          className="w-full p-4 text-left hover:bg-gray-50 flex justify-between items-center rounded-t-lg"
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <User className="w-5 h-5 text-blue-600" />
+                                            <span className="font-medium text-gray-700">Speaker Analysis</span>
+                                            <span className="text-sm text-gray-500 bg-blue-50 px-2 py-1 rounded-full">
+                                              {speakers.length} speakers
+                                            </span>
+                                          </div>
+                                          <span className="text-gray-400">
+                                            {collapsedSections.has('speaker-analysis') ? '▼' : '▲'}
+                                          </span>
+                                        </button>
+                                        
+                                        {!collapsedSections.has('speaker-analysis') && (
+                                          <div className="border-t border-gray-200 p-4 bg-gray-50">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                              {speakers.map((speaker: string, index: number) => {
+                                                  const genericSpeakerName = `Speaker ${index + 1}`;
+                                                  const sentiment = sentimentAnalysis.find((s: SpeakerSentiment) => s.speaker === speaker);
+                                                  const tone = toneAnalysis.find((t: SpeakerTone) => t.speaker === speaker);
+                                                  return (
+                                                      <div key={speaker} className="p-3 bg-white rounded-lg border shadow-sm">
+                                                          <h4 className="font-semibold text-gray-800 mb-2">{genericSpeakerName}</h4>
+                                                          <div className="space-y-1">
+                                                            {sentiment && (
+                                                              <div className="flex items-center gap-2">
+                                                                <span className="text-sm text-gray-600">Sentiment:</span>
+                                                                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                                                  sentiment.sentiment === 'positive' ? 'bg-green-100 text-green-800' :
+                                                                  sentiment.sentiment === 'negative' ? 'bg-red-100 text-red-800' :
+                                                                  'bg-gray-100 text-gray-800'
+                                                                }`}>
+                                                                  {sentiment.sentiment}
+                                                                </span>
+                                                              </div>
+                                                            )}
+                                                            {tone && (
+                                                              <div className="flex items-center gap-2">
+                                                                <span className="text-sm text-gray-600">Tone:</span>
+                                                                <span className="text-xs px-2 py-1 rounded-full font-medium bg-blue-100 text-blue-800">
+                                                                  {tone.tone}
+                                                                </span>
+                                                              </div>
+                                                            )}
+                                                          </div>
+                                                      </div>
+                                                  )
+                                              })}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Segment-wise Translation Display */}
+                                    <div className="border border-gray-200 rounded-lg">
+                                      <button
+                                        onClick={() => toggleSection('translated-content')}
+                                        className="w-full p-4 text-left hover:bg-gray-50 flex justify-between items-center rounded-t-lg"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <MessageCircle className="w-5 h-5 text-blue-600" />
+                                          <span className="font-medium text-gray-700">
+                                            {translationViewMode === 'side-by-side' ? 'Side-by-Side Translation' : 'Translated Conversation'}
+                                          </span>
+                                          <span className="text-sm text-gray-500 bg-blue-50 px-2 py-1 rounded-full">
+                                            {translatedSegments.length} segments
+                                          </span>
+                                        </div>
+                                        <span className="text-gray-400">
+                                          {collapsedSections.has('translated-content') ? '▼' : '▲'}
+                                        </span>
+                                      </button>
+                                      
+                                      {!collapsedSections.has('translated-content') && (
+                                        <div className="border-t border-gray-200 p-4 space-y-4 max-h-96 overflow-y-auto">
+                                          {translationViewMode === 'side-by-side' ? (
+                                            /* Side-by-Side Comparison */
+                                            <div className="space-y-4">
+                                              {translatedSegments.map((segment: any, index: number) => {
+                                                const speakerIndex = speakers.indexOf(segment.speaker);
+                                                const genericSpeakerName = `Speaker ${speakerIndex + 1}`;
+                                                
+                                                return (
+                                                  <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                      <span className="font-bold text-sm text-gray-600">{genericSpeakerName}</span>
+                                                      {segment.sentiment && (
+                                                        <span className={`text-xs px-2 py-1 rounded-full ${
+                                                          segment.sentiment === 'positive' ? 'bg-green-100 text-green-800' :
+                                                          segment.sentiment === 'negative' ? 'bg-red-100 text-red-800' :
+                                                          'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                          {segment.sentiment}
+                                                        </span>
+                                                      )}
+                                                      {segment.tone && (
+                                                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                                                          {segment.tone}
+                                                        </span>
+                                                      )}
+                                                      {segment.timestamp && (
+                                                        <span className="text-xs text-gray-400">
+                                                          {segment.timestamp}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    
+                                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                                      {/* Original Text */}
+                                                      <div className="bg-white rounded-md p-3 border border-gray-200">
+                                                        <div className="text-xs text-gray-500 mb-2 font-medium">
+                                                          Original ({typeof transcriptionData === 'object' && transcriptionData?.original_language || 'Auto-detected'})
+                                                        </div>
+                                                        <p className="text-gray-800 leading-relaxed text-sm">
+                                                          {segment.originalText}
+                                                        </p>
+                                                      </div>
+                                                      
+                                                      {/* Translated Text */}
+                                                      <div className="bg-blue-50 rounded-md p-3 border border-blue-200">
+                                                        <div className="text-xs text-blue-600 mb-2 font-medium">
+                                                          Translation ({languageOptions.find(l => l.code === targetLanguage)?.name})
+                                                        </div>
+                                                        <p className="text-gray-800 leading-relaxed text-sm">
+                                                          {segment.translatedText}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          ) : (
+                                            /* Translation Only View */
+                                            <div className="space-y-3">
+                                              {translatedSegments.map((segment: any, index: number) => {
+                                                const speakerIndex = speakers.indexOf(segment.speaker);
+                                                const genericSpeakerName = `Speaker ${speakerIndex + 1}`;
+                                                const isSpeaker1 = isChatView && speakerIndex === 0;
+
+                                                return (
+                                                  <div key={index} className={`flex flex-col ${isChatView ? (isSpeaker1 ? 'items-start' : 'items-end') : 'items-start'}`}>
+                                                    <div className={`flex items-center gap-2 ${isChatView && !isSpeaker1 ? 'flex-row-reverse' : ''}`}>
+                                                      <span className="font-bold text-sm text-gray-600">{genericSpeakerName}</span>
+                                                      {segment.sentiment && (
+                                                        <span className={`text-xs px-2 py-1 rounded-full ${
+                                                          segment.sentiment === 'positive' ? 'bg-green-100 text-green-800' :
+                                                          segment.sentiment === 'negative' ? 'bg-red-100 text-red-800' :
+                                                          'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                          {segment.sentiment}
+                                                        </span>
+                                                      )}
+                                                      {segment.tone && (
+                                                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                                                          {segment.tone}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    <div className={`mt-1 p-3 rounded-lg max-w-xl ${isChatView ? (isSpeaker1 ? 'bg-indigo-50' : 'bg-green-50') : 'bg-blue-50'}`}>
+                                                      <p className="text-gray-800 leading-relaxed">
+                                                        {segment.translatedText}
+                                                      </p>
+                                                      {segment.timestamp && (
+                                                        <p className={`text-xs text-gray-400 mt-2 ${isChatView ? (isSpeaker1 ? 'text-left' : 'text-right') : 'text-left'}`}>
+                                                          {segment.timestamp}
+                                                        </p>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : translatedText ? (
+                                  /* Fallback for simple text translation */
                                   <div className="space-y-4">
                                     <div className="bg-blue-50 p-3 rounded-md">
                                       <span className="text-sm font-medium text-blue-800">
@@ -1186,7 +1472,8 @@ export default function CallHistoryPage() {
                                                   <div key={index} className={`flex flex-col ${isChatView ? (isSpeaker1 ? 'items-start' : 'items-end') : 'items-start'}`}>
                                                       <div className={`flex items-center gap-2 ${isChatView && !isSpeaker1 ? 'flex-row-reverse' : ''}`}>
                                                           <span className="font-bold text-sm text-gray-600">{genericSpeakerName}</span>
-                                                          {showDetailedAnalysis && (segment as any).sentiment && (
+                                                          {/* Always show sentiment when available */}
+                                                          {(segment as any).sentiment && (
                                                             <span className={`text-xs px-2 py-1 rounded-full ${
                                                               (segment as any).sentiment === 'positive' ? 'bg-green-100 text-green-800' :
                                                               (segment as any).sentiment === 'negative' ? 'bg-red-100 text-red-800' :
@@ -1195,7 +1482,8 @@ export default function CallHistoryPage() {
                                                               {(segment as any).sentiment}
                                                             </span>
                                                           )}
-                                                          {showDetailedAnalysis && (segment as any).tone && (
+                                                          {/* Always show tone when available */}
+                                                          {(segment as any).tone && (
                                                             <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800">
                                                               {(segment as any).tone}
                                                             </span>
