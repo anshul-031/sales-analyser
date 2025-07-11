@@ -9,7 +9,12 @@ const authRoutes = ['/login', '/register', '/forgot-password', '/reset-password'
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const token = request.cookies.get('auth-token')?.value;
+  let token;
+  try {
+    token = request.cookies.get('auth-token')?.value;
+  } catch (error) {
+    console.log('Invalid token in middleware:', error);
+  }
 
   let isAuthenticated = false;
   

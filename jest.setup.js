@@ -53,13 +53,32 @@ class MockNextResponse {
     this.body = body
     this.status = options.status || 200
     this.headers = new Map(Object.entries(options.headers || {}))
+    this.cookies = {
+      _cookies: new Map(),
+      set: jest.fn((name, value, options) => {
+        this.cookies._cookies.set(name, { value, options });
+      }),
+      get: jest.fn((name) => this.cookies._cookies.get(name)),
+      delete: jest.fn(),
+    };
+  }
+
+  async json() {
+    return JSON.parse(this.body);
   }
   
   static json(data, options = {}) {
-    return new MockNextResponse(JSON.stringify(data), {
+    const response = new MockNextResponse(JSON.stringify(data), {
       ...options,
       headers: { 'Content-Type': 'application/json', ...options.headers }
-    })
+    });
+    // Copy cookies from the original response if available
+    if (options.cookies) {
+      options.cookies._cookies.forEach((cookie, name) => {
+        response.cookies.set(name, cookie.value, cookie.options);
+      });
+    }
+    return response;
   }
 }
 

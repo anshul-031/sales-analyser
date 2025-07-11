@@ -375,7 +375,7 @@ describe('Utils', () => {
     });
 
     it('should reject when max timeout is exceeded', async () => {
-      const promise = new Promise(resolve => setTimeout(resolve, 1000)); // Long enough to trigger timeout
+      const promise = new Promise<void>(() => {}); // A promise that never resolves
       
       await expect(
         AdaptiveTimeout.createExtendableTimeout(promise, 50, 200, 'timeout test')
