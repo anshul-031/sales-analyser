@@ -385,6 +385,24 @@ export class DatabaseStorage {
     }
   }
 
+  static async getAnalysisWithInsights(id: string) {
+    try {
+      const analysis = await prisma.analysis.findUnique({
+        where: { id },
+        include: {
+          insights: true,
+          callMetrics: true,
+          user: true,
+          upload: true,
+        },
+      });
+      return analysis;
+    } catch (error) {
+      Logger.error('[Database] Error getting analysis with insights:', error);
+      throw error;
+    }
+  }
+
   // Insight operations
   static async createInsight(insight: {
     analysisId: string;
@@ -481,75 +499,240 @@ export class DatabaseStorage {
     }
   }
 
-  // Advanced query operations
-  static async getAnalysisWithInsights(analysisId: string) {
+  // Action Items operations
+  static async createActionItem(actionItem: {
+    analysisId: string;
+    title: string;
+    description?: string;
+    priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+    status?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+    deadline?: Date;
+    comments?: string;
+  }) {
     try {
-      const analysis = await prisma.analysis.findUnique({
-        where: { id: analysisId },
-        include: {
-          user: true,
-          upload: true,
-          insights: {
-            orderBy: { createdAt: 'desc' },
-          },
-          callMetrics: true,
+      const newActionItem = await prisma.actionItem.create({
+        data: {
+          ...actionItem,
+          deadline: actionItem.deadline || new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
         },
       });
-      return analysis;
+
+      Logger.info('[Database] Created action item:', newActionItem.id);
+      return newActionItem;
     } catch (error) {
-      Logger.error('[Database] Error getting analysis with insights:', error);
+      Logger.error('[Database] Error creating action item:', error);
       throw error;
     }
   }
 
-  static async getUserAnalyticsData(
-    userId: string,
-    options: {
-      includeCounts?: boolean;
-      includeRecentAnalyses?: boolean;
-      recentAnalysesLimit?: number;
-    } = { includeCounts: true, includeRecentAnalyses: true, recentAnalysesLimit: 10 }
-  ) {
+  static async createMultipleActionItems(actionItems: Array<{
+    analysisId: string;
+    title: string;
+    description?: string;
+    priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+    status?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+    deadline?: Date;
+    comments?: string;
+  }>) {
     try {
-      const result: any = {};
+      const actionItemsWithDefaults = actionItems.map(item => ({
+        ...item,
+        deadline: item.deadline || new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
+      }));
 
-      if (options.includeCounts) {
-        const totalUploads = await prisma.upload.count({
-          where: { userId },
-        });
-        const totalAnalyses = await prisma.analysis.count({
-          where: { userId },
-        });
-        const completedAnalyses = await prisma.analysis.count({
-          where: { userId, status: 'COMPLETED' },
-        });
-        const failedAnalyses = await prisma.analysis.count({
-          where: { userId, status: 'FAILED' },
-        });
-        result.totalUploads = totalUploads;
-        result.totalAnalyses = totalAnalyses;
-        result.completedAnalyses = completedAnalyses;
-        result.failedAnalyses = failedAnalyses;
-        result.successRate = totalAnalyses > 0 ? (completedAnalyses / totalAnalyses) * 100 : 0;
-      }
+      const newActionItems = await prisma.actionItem.createMany({
+        data: actionItemsWithDefaults,
+      });
 
-      if (options.includeRecentAnalyses) {
-        const recentAnalyses = await prisma.analysis.findMany({
-          where: { userId },
-          orderBy: { createdAt: 'desc' },
-          take: options.recentAnalysesLimit,
-          include: {
-            upload: true,
-            insights: true,
-            callMetrics: true,
-          },
-        });
-        result.recentAnalyses = recentAnalyses;
-      }
-
-      return result;
+      Logger.info('[Database] Created multiple action items:', newActionItems.count);
+      return newActionItems;
     } catch (error) {
-      Logger.error('[Database] Error getting user analytics data:', error);
+      Logger.error('[Database] Error creating multiple action items:', error);
+      throw error;
+    }
+  }
+
+  static async getActionItemsByAnalysisId(analysisId: string) {
+    try {
+      const actionItems = await prisma.actionItem.findMany({
+        where: { analysisId },
+        orderBy: [
+          { priority: 'desc' }, // HIGH first
+          { createdAt: 'asc' }
+        ],
+      });
+      return actionItems;
+    } catch (error) {
+      Logger.error('[Database] Error getting action items by analysis ID:', error);
+      throw error;
+    }
+  }
+
+  static async updateActionItem(id: string, updates: {
+    title?: string;
+    description?: string;
+    priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+    status?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+    deadline?: Date;
+    comments?: string;
+  }) {
+    try {
+      const updatedActionItem = await prisma.actionItem.update({
+        where: { id },
+        data: updates,
+      });
+
+      Logger.info('[Database] Updated action item:', id);
+      return updatedActionItem;
+    } catch (error) {
+      Logger.error('[Database] Error updating action item:', error);
+      throw error;
+    }
+  }
+
+  static async deleteActionItem(id: string) {
+    try {
+      const deletedActionItem = await prisma.actionItem.delete({
+        where: { id },
+      });
+      Logger.info('[Database] Deleted action item:', id);
+      return deletedActionItem;
+    } catch (error) {
+      Logger.error('[Database] Error deleting action item:', error);
+      throw error;
+    }
+  }
+
+  static async getActionItemsByUserId(userId: string, filters?: {
+    status?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+    priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+    timeframe?: '24h' | '7d' | '30d' | 'all';
+  }) {
+    try {
+      const whereClause: any = {
+        analysis: { userId }
+      };
+
+      if (filters?.status) {
+        whereClause.status = filters.status;
+      }
+
+      if (filters?.priority) {
+        whereClause.priority = filters.priority;
+      }
+
+      if (filters?.timeframe && filters.timeframe !== 'all') {
+        let timeAgo: Date;
+        switch (filters.timeframe) {
+          case '24h':
+            timeAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            break;
+          case '7d':
+            timeAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            break;
+          case '30d':
+            timeAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            break;
+        }
+        whereClause.createdAt = { gte: timeAgo };
+      }
+
+      const actionItems = await prisma.actionItem.findMany({
+        where: whereClause,
+        include: {
+          analysis: {
+            include: {
+              upload: true
+            }
+          }
+        },
+        orderBy: [
+          { priority: 'desc' },
+          { deadline: 'asc' }
+        ],
+      });
+
+      return actionItems;
+    } catch (error) {
+      Logger.error('[Database] Error getting action items by user ID:', error);
+      throw error;
+    }
+  }
+
+  static async getActionItemsAnalytics(userId: string, timeframe: '24h' | '7d' | '30d' = '7d') {
+    try {
+      let timeAgo: Date;
+      switch (timeframe) {
+        case '24h':
+          timeAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          break;
+        case '7d':
+          timeAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case '30d':
+          timeAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          break;
+      }
+
+      const [total, completed, inProgress, notStarted, overdue, highPriority] = await Promise.all([
+        prisma.actionItem.count({
+          where: {
+            analysis: { userId },
+            createdAt: { gte: timeAgo }
+          }
+        }),
+        prisma.actionItem.count({
+          where: {
+            analysis: { userId },
+            status: 'COMPLETED',
+            createdAt: { gte: timeAgo }
+          }
+        }),
+        prisma.actionItem.count({
+          where: {
+            analysis: { userId },
+            status: 'IN_PROGRESS',
+            createdAt: { gte: timeAgo }
+          }
+        }),
+        prisma.actionItem.count({
+          where: {
+            analysis: { userId },
+            status: 'NOT_STARTED',
+            createdAt: { gte: timeAgo }
+          }
+        }),
+        prisma.actionItem.count({
+          where: {
+            analysis: { userId },
+            deadline: { lt: new Date() },
+            status: { not: 'COMPLETED' },
+            createdAt: { gte: timeAgo }
+          }
+        }),
+        prisma.actionItem.count({
+          where: {
+            analysis: { userId },
+            priority: 'HIGH',
+            createdAt: { gte: timeAgo }
+          }
+        })
+      ]);
+
+      const completionRate = total > 0 ? (completed / total) * 100 : 0;
+
+      return {
+        total,
+        completed,
+        inProgress,
+        notStarted,
+        overdue,
+        highPriority,
+        completionRate: Math.round(completionRate * 100) / 100,
+        timeframe
+      };
+    } catch (error) {
+      Logger.error('[Database] Error getting action items analytics:', error);
       throw error;
     }
   }
@@ -638,6 +821,27 @@ export class DatabaseStorage {
       };
     } catch (error) {
       Logger.error('[Database] Error getting global stats:', error);
+      throw error;
+    }
+  }
+
+  static async getActionItemById(id: string) {
+    try {
+      const actionItem = await prisma.actionItem.findUnique({
+        where: { id },
+        include: {
+          analysis: {
+            select: {
+              id: true,
+              userId: true,
+            }
+          }
+        }
+      });
+
+      return actionItem;
+    } catch (error) {
+      Logger.error('[Database] Error getting action item by ID:', error);
       throw error;
     }
   }

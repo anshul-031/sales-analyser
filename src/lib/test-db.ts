@@ -68,8 +68,14 @@ async function testDatabaseConnection() {
     Logger.info('[DB Test] Created test insights');
 
     // Test queries
-    const userAnalytics = await DatabaseStorage.getUserAnalyticsData(testUserId);
-    Logger.info('[DB Test] User analytics:', userAnalytics);
+    const uploads = await DatabaseStorage.getUploadsByUser(testUserId);
+    Logger.info('[DB Test] User uploads:', uploads.length);
+
+    const analyses = await DatabaseStorage.getAnalysesByUser(testUserId);
+    Logger.info('[DB Test] User analyses:', analyses.length);
+
+    const actionItems = await DatabaseStorage.getActionItemsAnalytics(testUserId, '7d');
+    Logger.info('[DB Test] Action items analytics:', actionItems);
 
     const globalStats = await DatabaseStorage.getGlobalStats();
     Logger.info('[DB Test] Global stats:', globalStats);

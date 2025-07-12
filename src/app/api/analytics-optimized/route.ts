@@ -41,12 +41,20 @@ export async function GET(request: NextRequest) {
     const recentAnalysesLimit = searchParams.has('recentAnalysesLimit')
       ? parseInt(searchParams.get('recentAnalysesLimit')!, 10)
       : 5;
+    const timeframe = (searchParams.get('timeframe') || '7d') as '24h' | '7d' | '30d';
 
-    const userAnalytics = await DatabaseStorage.getUserAnalyticsData(user.id, {
-      includeCounts,
-      includeRecentAnalyses,
-      recentAnalysesLimit,
-    });
+    // Get basic analytics data
+    const [uploads, analyses, actionItemsAnalytics] = await Promise.all([
+      DatabaseStorage.getUploadsByUser(user.id, { includeAnalyses: false, page: 1, limit: 1000 }),
+      DatabaseStorage.getAnalysesByUser(user.id),
+      DatabaseStorage.getActionItemsAnalytics(user.id, timeframe)
+    ]);
+
+    const userAnalytics = {
+      uploads,
+      analyses,
+      actionItems: actionItemsAnalytics
+    };
 
     return NextResponse.json({
       success: true,

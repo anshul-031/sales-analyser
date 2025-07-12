@@ -11,7 +11,12 @@ import {
   Activity,
   PieChart,
   Calendar,
-  Download
+  Download,
+  CheckCircle,
+  AlertCircle,
+  PlayCircle,
+  XCircle,
+  Target
 } from 'lucide-react';
 import { Logger } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
@@ -36,6 +41,16 @@ interface AnalyticsData {
     positive: number;
     neutral: number;
     negative: number;
+  };
+  actionItems?: {
+    total: number;
+    completed: number;
+    inProgress: number;
+    notStarted: number;
+    overdue: number;
+    highPriority: number;
+    completionRate: number;
+    timeframe: string;
   };
 }
 
@@ -68,17 +83,19 @@ export default function AnalyticsPage() {
       // Fetch uploads and analyses data
       const [uploadsResponse, analysesResponse] = await Promise.all([
         fetch('/api/uploads-optimized'),
-        fetch('/api/analytics-optimized')
+        fetch(`/api/analytics-optimized?timeframe=${timeframe}`)
       ]);
 
-      const [uploadsResult, analysesResult] = await Promise.all([
+      const [uploadsResult, analyticsResult] = await Promise.all([
         uploadsResponse.json(),
         analysesResponse.json()
       ]);
 
-      if (uploadsResult.success && analysesResult.success) {
+      if (uploadsResult.success && analyticsResult.success) {
         const uploads = uploadsResult.uploads || [];
-        const analyses = analysesResult.analyses || [];
+        const analytics = analyticsResult.analytics || {};
+        const analyses = analytics.analyses || [];
+        const actionItems = analytics.actionItems;
         
         // Filter audio files
         const audioUploads = uploads.filter((upload: any) => 
@@ -134,7 +151,8 @@ export default function AnalyticsPage() {
           transcriptionRate,
           recentActivity,
           callsByTimeframe,
-          sentimentDistribution
+          sentimentDistribution,
+          actionItems
         });
       }
     } catch (error) {
@@ -250,6 +268,141 @@ export default function AnalyticsPage() {
             subtitle="Avg per recording"
           />
         </div>
+
+        {/* Action Items Analytics */}
+        {analyticsData?.actionItems && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Target className="w-6 h-6 text-indigo-600" />
+              Action Items Overview
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+              <StatCard
+                title="Total Action Items"
+                value={analyticsData.actionItems.total}
+                icon={Target}
+                color="text-indigo-600"
+                subtitle={`Past ${analyticsData.actionItems.timeframe === '24h' ? '24 hours' : 
+                  analyticsData.actionItems.timeframe === '7d' ? '7 days' : '30 days'}`}
+              />
+              <StatCard
+                title="Completed"
+                value={analyticsData.actionItems.completed}
+                icon={CheckCircle}
+                color="text-green-600"
+                subtitle={`${analyticsData.actionItems.completionRate}% completion rate`}
+              />
+              <StatCard
+                title="In Progress"
+                value={analyticsData.actionItems.inProgress}
+                icon={PlayCircle}
+                color="text-blue-600"
+              />
+              <StatCard
+                title="Not Started"
+                value={analyticsData.actionItems.notStarted}
+                icon={XCircle}
+                color="text-gray-600"
+              />
+              <StatCard
+                title="Overdue"
+                value={analyticsData.actionItems.overdue}
+                icon={AlertCircle}
+                color="text-red-600"
+                subtitle="Past deadline"
+              />
+            </div>
+
+            {/* Action Items Status Chart */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-gray-900">Action Items Status Distribution</h3>
+                <PieChart className="w-5 h-5 text-gray-500" />
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-green-600 mb-2">
+                    {analyticsData.actionItems.completed}
+                  </div>
+                  <div className="text-sm text-gray-600">Completed</div>
+                  <div className="mt-2 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-green-600 h-2 rounded-full"
+                      style={{ 
+                        width: `${analyticsData.actionItems.total > 0 ? 
+                          (analyticsData.actionItems.completed / analyticsData.actionItems.total) * 100 : 0}%` 
+                      }}
+                    ></div>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-blue-600 mb-2">
+                    {analyticsData.actionItems.inProgress}
+                  </div>
+                  <div className="text-sm text-gray-600">In Progress</div>
+                  <div className="mt-2 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-600 h-2 rounded-full"
+                      style={{ 
+                        width: `${analyticsData.actionItems.total > 0 ? 
+                          (analyticsData.actionItems.inProgress / analyticsData.actionItems.total) * 100 : 0}%` 
+                      }}
+                    ></div>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-gray-600 mb-2">
+                    {analyticsData.actionItems.notStarted}
+                  </div>
+                  <div className="text-sm text-gray-600">Not Started</div>
+                  <div className="mt-2 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-gray-600 h-2 rounded-full"
+                      style={{ 
+                        width: `${analyticsData.actionItems.total > 0 ? 
+                          (analyticsData.actionItems.notStarted / analyticsData.actionItems.total) * 100 : 0}%` 
+                      }}
+                    ></div>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-red-600 mb-2">
+                    {analyticsData.actionItems.overdue}
+                  </div>
+                  <div className="text-sm text-gray-600">Overdue</div>
+                  <div className="mt-2 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-red-600 h-2 rounded-full"
+                      style={{ 
+                        width: `${analyticsData.actionItems.total > 0 ? 
+                          (analyticsData.actionItems.overdue / analyticsData.actionItems.total) * 100 : 0}%` 
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+
+              {analyticsData.actionItems.total > 0 && (
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Overall Completion Rate</span>
+                    <span className="text-lg font-bold text-indigo-600">
+                      {analyticsData.actionItems.completionRate}%
+                    </span>
+                  </div>
+                  <div className="mt-2 bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-indigo-600 h-3 rounded-full"
+                      style={{ width: `${analyticsData.actionItems.completionRate}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Call Activity Chart */}

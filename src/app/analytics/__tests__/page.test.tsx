@@ -57,7 +57,7 @@ describe('AnalyticsPage', () => {
 
     (fetch as jest.Mock)
       .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true, uploads: mockUploads }) })
-      .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true, analyses: mockAnalyses }) });
+      .mockResolvedValueOnce({ json: () => Promise.resolve({ success: true, analytics: { analyses: mockAnalyses } }) });
 
     render(<AnalyticsPage />);
 

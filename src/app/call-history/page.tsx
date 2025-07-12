@@ -12,7 +12,8 @@ import {
   CheckCircle,
   XCircle,
   MessageCircle,
-  User
+  User,
+  ClipboardList
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
@@ -66,6 +67,11 @@ export default function CallHistoryPage() {
   const [failedAnalysisIds, setFailedAnalysisIds] = useState<Set<string>>(new Set());
   const [isPolling, setIsPolling] = useState(false);
   const lastPollingUpdateRef = useRef<number>(0);
+  
+  // Action Items state
+  const [actionItems, setActionItems] = useState<any[]>([]);
+  const [loadingActionItems, setLoadingActionItems] = useState(false);
+  const [updatingActionItem, setUpdatingActionItem] = useState<string | null>(null);
   
   // Memoize current analysis status to prevent unnecessary re-renders
   const currentAnalysisStatus = useMemo(() => {
@@ -458,6 +464,72 @@ export default function CallHistoryPage() {
     }
   }, [user, loadingAnalysisData, failedAnalysisIds, retryAttempts, loadedAnalysisIds]);
 
+  // Action Items functions
+  const loadActionItems = async (analysisId: string) => {
+    try {
+      setLoadingActionItems(true);
+      const response = await fetch(`/api/action-items?analysisId=${analysisId}`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setActionItems(result.actionItems || []);
+      } else {
+        console.error('Failed to load action items:', result.message);
+        setActionItems([]);
+      }
+    } catch (error) {
+      console.error('Error loading action items:', error);
+      setActionItems([]);
+    } finally {
+      setLoadingActionItems(false);
+    }
+  };
+
+  const updateActionItem = async (actionItemId: string, updates: any) => {
+    try {
+      setUpdatingActionItem(actionItemId);
+      const response = await fetch('/api/action-items', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: actionItemId,
+          ...updates
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Update the action item in the local state
+        setActionItems(prev => prev.map(item => 
+          item.id === actionItemId ? result.actionItem : item
+        ));
+      } else {
+        console.error('Failed to update action item:', result.message);
+        alert('Failed to update action item: ' + result.message);
+      }
+    } catch (error) {
+      console.error('Error updating action item:', error);
+      alert('An error occurred while updating the action item.');
+    } finally {
+      setUpdatingActionItem(null);
+    }
+  };
+
+  const addComment = async (actionItemId: string, comment: string) => {
+    const actionItem = actionItems.find(item => item.id === actionItemId);
+    if (!actionItem) return;
+
+    const existingComments = actionItem.comments || '';
+    const newComments = existingComments 
+      ? `${existingComments}\n\n[${new Date().toLocaleString()}] ${comment}`
+      : `[${new Date().toLocaleString()}] ${comment}`;
+
+    await updateActionItem(actionItemId, { comments: newComments });
+  };
+
   const handleDelete = async (recordingId: string) => {
     if (!confirm('Are you sure you want to delete this recording and its analysis?')) return;
 
@@ -535,6 +607,12 @@ export default function CallHistoryPage() {
         }
       } else if (loadedAnalysisIds.has(analysis.id)) {
         console.log('[CallHistory] Skipping API call - data already loaded for:', analysis.id);
+      }
+      
+      // Load action items when switching to action-items tab
+      if (tab === 'action-items' && isCompleted) {
+        console.log('[CallHistory] Loading action items for analysis:', analysis.id);
+        loadActionItems(analysis.id);
       }
     }
     
@@ -804,6 +882,9 @@ export default function CallHistoryPage() {
                 <button onClick={() => handleTabChange('transcription')} className={`px-4 py-2 text-sm rounded-md ${activeTab === 'transcription' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
                   <FileText className="w-4 h-4 inline-block mr-2"/>Transcription
                 </button>
+                <button onClick={() => handleTabChange('action-items')} className={`px-4 py-2 text-sm rounded-md ${activeTab === 'action-items' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
+                  <ClipboardList className="w-4 h-4 inline-block mr-2"/>Action Items
+                </button>
                 <button onClick={() => handleTabChange('chat')} className={`px-4 py-2 text-sm rounded-md ${activeTab === 'chat' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'} relative`}>
                   <MessageCircle className="w-4 h-4 inline-block mr-2"/>AI Chat
                   <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -885,6 +966,189 @@ export default function CallHistoryPage() {
                       }
                       console.log(`[CallHistory-RENDER-${renderId}] Returning AnalysisDisplay component`);
                       return <AnalysisDisplay analysisResult={analysis.analysisResult} />;
+                    }
+                    if (activeTab === 'action-items') {
+                      console.log(`[CallHistory-RENDER-${renderId}] Rendering action items tab`);
+                      
+                      return (
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                          <div className="p-4 border-b border-gray-200 bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                  <ClipboardList className="w-5 h-5" />
+                                  Action Items
+                                  {actionItems.length > 0 && (
+                                    <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full ml-2">
+                                      {actionItems.length}
+                                    </span>
+                                  )}
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Manage tasks and follow-ups identified from the call
+                                </p>
+                              </div>
+                              {actionItems.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <div className="text-xs text-gray-500">
+                                    {actionItems.filter(item => item.status === 'COMPLETED').length} / {actionItems.length} completed
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const pendingItems = actionItems.filter(item => item.status !== 'COMPLETED');
+                                      if (pendingItems.length > 0) {
+                                        pendingItems.forEach(item => {
+                                          updateActionItem(item.id, { status: 'COMPLETED' });
+                                        });
+                                      }
+                                    }}
+                                    className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                                    disabled={actionItems.filter(item => item.status !== 'COMPLETED').length === 0}
+                                  >
+                                    Mark All Complete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="p-6">
+                            {loadingActionItems ? (
+                              <div className="text-center py-8">
+                                <div className="flex items-center justify-center mb-4">
+                                  <Loader2 className="w-6 h-6 mr-2 animate-spin text-green-600" />
+                                  <p className="text-gray-600">Loading action items...</p>
+                                </div>
+                              </div>
+                            ) : actionItems.length > 0 ? (
+                              <div className="space-y-4">
+                                {actionItems.map((item, index) => {
+                                  const isOverdue = item.deadline && new Date(item.deadline) < new Date() && item.status !== 'COMPLETED';
+                                  return (
+                                    <div key={item.id || index} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                                      <div className="flex items-start justify-between mb-3">
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <div className={`w-3 h-3 rounded-full ${
+                                              item.status === 'COMPLETED' ? 'bg-green-500' :
+                                              item.status === 'IN_PROGRESS' ? 'bg-blue-500' :
+                                              isOverdue ? 'bg-red-500' :
+                                              'bg-gray-400'
+                                            }`} />
+                                            <select
+                                              value={item.status || 'NOT_STARTED'}
+                                              onChange={(e) => updateActionItem(item.id, { status: e.target.value })}
+                                              disabled={updatingActionItem === item.id}
+                                              className={`text-xs font-medium px-2 py-1 rounded-full border-0 ${
+                                                item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                                                item.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
+                                                isOverdue ? 'bg-red-100 text-red-800' :
+                                                'bg-gray-100 text-gray-800'
+                                              }`}
+                                            >
+                                              <option value="NOT_STARTED">Not Started</option>
+                                              <option value="IN_PROGRESS">In Progress</option>
+                                              <option value="COMPLETED">Completed</option>
+                                            </select>
+                                          </div>
+                                          <h4 className="font-medium text-gray-800 mb-1">{item.title}</h4>
+                                          <p className="text-sm text-gray-600 mb-2">{item.description}</p>
+                                          
+                                          {/* Priority and Deadline Row */}
+                                          <div className="flex items-center gap-4 mb-2">
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-xs text-gray-500">Priority:</span>
+                                              <select
+                                                value={item.priority || 'MEDIUM'}
+                                                onChange={(e) => updateActionItem(item.id, { priority: e.target.value })}
+                                                disabled={updatingActionItem === item.id}
+                                                className={`text-xs px-2 py-1 rounded border-0 ${
+                                                  item.priority === 'HIGH' ? 'bg-red-100 text-red-800' :
+                                                  item.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                                                  'bg-green-100 text-green-800'
+                                                }`}
+                                              >
+                                                <option value="LOW">Low</option>
+                                                <option value="MEDIUM">Medium</option>
+                                                <option value="HIGH">High</option>
+                                              </select>
+                                            </div>
+                                            
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-xs text-gray-500">Due:</span>
+                                              <input
+                                                type="date"
+                                                value={item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : ''}
+                                                onChange={(e) => updateActionItem(item.id, { 
+                                                  deadline: e.target.value ? new Date(e.target.value).toISOString() : null 
+                                                })}
+                                                disabled={updatingActionItem === item.id}
+                                                className={`text-xs px-2 py-1 rounded border border-gray-300 ${
+                                                  isOverdue ? 'bg-red-50 border-red-300' : 'bg-white'
+                                                }`}
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {item.assignee && (
+                                            <p className="text-xs text-gray-500 mb-2">
+                                              Assigned to: {item.assignee}
+                                            </p>
+                                          )}
+
+                                          {/* Comments Section */}
+                                          {item.comments && (
+                                            <div className="mt-3 p-2 bg-gray-50 rounded text-xs">
+                                              <span className="font-medium text-gray-700">Comments:</span>
+                                              <div className="mt-1 whitespace-pre-wrap text-gray-600">
+                                                {item.comments}
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* Add Comment Input */}
+                                          <div className="mt-3">
+                                            <input
+                                              type="text"
+                                              placeholder="Add a comment..."
+                                              className="w-full text-xs px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                              onKeyPress={(e) => {
+                                                if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                  addComment(item.id, (e.target as HTMLInputElement).value.trim());
+                                                  (e.target as HTMLInputElement).value = '';
+                                                }
+                                              }}
+                                              disabled={updatingActionItem === item.id}
+                                            />
+                                            <p className="text-xs text-gray-400 mt-1">Press Enter to add comment</p>
+                                          </div>
+                                        </div>
+
+                                        {/* Loading indicator */}
+                                        {updatingActionItem === item.id && (
+                                          <div className="ml-2">
+                                            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-center py-12">
+                                <div className="flex flex-col items-center">
+                                  <ClipboardList className="w-12 h-12 text-gray-300 mb-4" />
+                                  <h4 className="text-lg font-medium text-gray-500 mb-2">No Action Items Found</h4>
+                                  <p className="text-sm text-gray-400 max-w-md text-center">
+                                    No specific action items or tasks were identified in this call recording. 
+                                    This could mean the call was informational or didn't result in concrete next steps.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
                     }
                     if (activeTab === 'transcription') {
                       const loggableTranscription = typeof analysis.transcription === 'string' ? analysis.transcription.substring(0,100) + '...' : '[Object]';
@@ -1489,7 +1753,7 @@ export default function CallHistoryPage() {
                                                             </span>
                                                           )}
                                                       </div>
-                                                      <div className={`mt-1 p-3 rounded-lg max-w-xl ${isChatView ? (isSpeaker1 ? 'bg-indigo-50' : 'bg-green-50') : 'bg-gray-100'}`}>
+                                                      <div className={`mt-1 p-3 rounded-lg max-w-xl ${isChatView ? (isSpeaker1 ? 'bg-indigo-50' : 'bg-green-50') : 'bg-blue-50'}`}>
                                                           <p className="text-gray-800 leading-relaxed">
                                                               {segment.text}
                                                           </p>
@@ -1589,6 +1853,7 @@ export default function CallHistoryPage() {
                               </div>
                               <p className="text-blue-700 text-sm">
                                 Ask me anything about this call recording! I can help you understand the transcription, 
+ 
                                 analysis results, key points, customer sentiment, and provide insights for improvement.
                               </p>
                             </div>
@@ -1663,6 +1928,36 @@ export default function CallHistoryPage() {
                         </div>
                       );
                     }
+                    if (activeTab === 'action-items') {
+                      return (
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                          <div className="p-4 border-b border-gray-200 bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                  <ClipboardList className="w-5 h-5" />
+                                  Action Items
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Tasks and follow-ups identified from the call
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-6">
+                            <div className="text-center py-12">
+                              <div className="flex flex-col items-center">
+                                <XCircle className="w-12 h-12 text-red-300 mb-4" />
+                                <h4 className="text-lg font-medium text-red-600 mb-2">Action Items Unavailable</h4>
+                                <p className="text-sm text-red-500 max-w-md text-center">
+                                  Action items could not be extracted because the analysis failed. Please try re-uploading and analyzing this recording.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
                     return (
                       <div className="bg-red-50 border border-red-200 rounded-lg p-6">
                         <div className="flex items-center text-red-600 mb-2">
@@ -1709,6 +2004,36 @@ export default function CallHistoryPage() {
                                 <MessageCircle className="w-4 h-4" />
                                 Start Chat
                               </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (activeTab === 'action-items') {
+                      return (
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                          <div className="p-4 border-b border-gray-200 bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                                  <ClipboardList className="w-5 h-5" />
+                                  Action Items
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Tasks and follow-ups identified from the call
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-6">
+                            <div className="text-center py-12">
+                              <div className="flex flex-col items-center">
+                                <Loader2 className="w-12 h-12 text-blue-400 mb-4 animate-spin" />
+                                <h4 className="text-lg font-medium text-blue-600 mb-2">Analysis in Progress</h4>
+                                <p className="text-sm text-blue-500 max-w-md text-center">
+                                  Action items will be available once the call analysis is complete. This typically takes 5-10 minutes.
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1775,6 +2100,21 @@ export default function CallHistoryPage() {
                         <MessageCircle className="w-4 h-4" />
                         Start Chat
                       </button>
+                    </div>
+                  )}
+                  
+                  {/* Action items tab for no analysis */}
+                  {activeTab === 'action-items' && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                      <div className="text-center py-8">
+                        <div className="flex flex-col items-center">
+                          <ClipboardList className="w-12 h-12 text-gray-300 mb-4" />
+                          <h4 className="text-lg font-medium text-gray-500 mb-2">No Analysis Available</h4>
+                          <p className="text-sm text-gray-400 max-w-md text-center">
+                            Action items are not available because this recording has not been analyzed yet. Please upload and analyze the recording first.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

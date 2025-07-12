@@ -6,7 +6,7 @@ import { serializeBigInt } from '@/lib/serialization';
 
 export async function GET(
   request: NextRequest,
-  context: any
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getAuthenticatedUser(request);
@@ -17,7 +17,8 @@ export async function GET(
       }, { status: 401 });
     }
 
-    const analysisId = context.params.id;
+    const params = await context.params;
+    const analysisId = params.id;
 
     const { searchParams } = new URL(request.url);
     const includeUser = searchParams.get('includeUser') !== 'false';

@@ -448,6 +448,9 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
       const customScores = Object.values(customResults).map((r: any) => r.score).filter(s => s > 0);
       const customOverallScore = customScores.length > 0 ? Math.round(customScores.reduce((a, b) => a + b, 0) / customScores.length) : 0;
       
+      // Extract action items
+      const actionItems = await this.extractActionItems(transcription);
+      
       console.log('[GeminiService] Custom parameters analysis completed');
       
       return {
@@ -458,7 +461,8 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
         parameterNames: enabledParameters.reduce((acc, param) => {
           acc[param.id] = param.name;
           return acc;
-        }, {} as Record<string, string>)
+        }, {} as Record<string, string>),
+        actionItems: actionItems
       };
     } catch (error) {
       console.error('[GeminiService] Custom parameters analysis error:', error);
@@ -528,6 +532,9 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
       const scores = Object.values(results).map((r: any) => r.score).filter(s => s > 0);
       const overallScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
       
+      // Extract action items
+      const actionItems = await this.extractActionItems(transcription);
+      
       console.log('[GeminiService] Default analysis completed');
       
       return {
@@ -538,7 +545,8 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
         parameterNames: Object.entries(DEFAULT_ANALYSIS_PARAMETERS).reduce((acc, [key, param]) => {
           acc[key] = param.name;
           return acc;
-        }, {} as Record<string, string>)
+        }, {} as Record<string, string>),
+        actionItems: actionItems
       };
     } catch (error) {
       console.error('[GeminiService] Default analysis error:', error);
@@ -580,11 +588,15 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
         return 'summary' in data && 'key_findings' in data && 'scores' in data && 'recommendations' in data && 'specific_examples' in data;
       });
       
+      // Extract action items
+      const actionItems = await this.extractActionItems(transcription);
+      
       console.log('[GeminiService] Custom analysis completed');
       
       return {
         type: 'custom',
         analysisDate: new Date().toISOString(),
+        actionItems: actionItems,
         ...analysisResult
       };
     } catch (error) {
@@ -611,6 +623,242 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
     } catch (error) {
       console.error('[GeminiService] Chatbot error:', error);
       throw new Error(`Chatbot response generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Extract action items from transcription
+   */
+  async extractActionItems(transcription: string): Promise<any[]> {
+    try {
+      console.log('[GeminiService] Extracting action items from transcription');
+      
+      // Parse JSON transcription if needed and convert to readable format
+      let transcriptionForAnalysis = transcription;
+      try {
+        const transcriptionData = JSON.parse(transcription);
+        if (transcriptionData && Array.isArray(transcriptionData.diarized_transcription)) {
+          // Use english_translation if it exists, otherwise use diarized_transcription
+          const transcriptionSource = transcriptionData.english_translation || transcriptionData.diarized_transcription;
+          transcriptionForAnalysis = transcriptionSource
+            .map((t: { speaker: string; text: string }) => `${t.speaker}: ${t.text}`)
+            .join('\n');
+          console.log('[GeminiService] Converted JSON transcription to readable format for action item extraction');
+        }
+      } catch (e) {
+        // Ignore parsing errors, use transcription as is (for backward compatibility)
+        console.log('[GeminiService] Using transcription as plain text for action item extraction');
+      }
+      
+      const prompt = `Analyze the following sales call transcription and extract action items that need to be completed based on the conversation. Look for:
+
+1. Explicit commitments made by participants
+2. Follow-up tasks mentioned
+3. Next steps discussed
+4. Deliverables promised
+5. Meetings or calls to be scheduled
+6. Documents to be shared
+7. Decisions to be made
+8. People to be contacted
+
+Sales Call Transcription:
+${transcriptionForAnalysis}
+
+Please provide your analysis in the following JSON format.
+IMPORTANT: Your response must be a single, valid JSON array and nothing else. Do not include any text before or after the JSON array.
+[
+  {
+    "title": "<Brief action item title (max 100 characters)>",
+    "description": "<Detailed description of what needs to be done>",
+    "priority": "<LOW, MEDIUM, or HIGH based on urgency>",
+    "deadline": "<YYYY-MM-DD format or null if no specific deadline mentioned>",
+    "assignee": "<Who is responsible (if mentioned) or null>",
+    "context": "<Relevant context from the conversation>"
+  }
+]
+
+If no action items are found, return an empty array: []`;
+
+      const rawResponse = await this.makeAPICallWithRetry(async () => {
+        const model = this.getCurrentModel();
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      });
+
+      // Parse the action items response with improved error handling
+      const actionItems = this.parseActionItemsResponse(rawResponse);
+      
+      console.log(`[GeminiService] Extracted ${actionItems.length} action items`);
+      return actionItems;
+    } catch (error) {
+      console.error('[GeminiService] Action items extraction error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse action items response with improved error handling for malformed JSON
+   */
+  private parseActionItemsResponse(rawResponse: string): any[] {
+    try {
+      console.log('[GeminiService] Parsing action items response');
+      console.log('[GeminiService] Raw response preview:', rawResponse.substring(0, 200) + '...');
+      
+      // First, try to find a complete JSON array in the response
+      const arrayMatch = rawResponse.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        try {
+          const parsed = JSON.parse(arrayMatch[0]);
+          if (Array.isArray(parsed)) {
+            console.log(`[GeminiService] Successfully parsed JSON array with ${parsed.length} items`);
+            return parsed;
+          }
+        } catch (e) {
+          console.log('[GeminiService] Failed to parse JSON array, trying object parsing');
+        }
+      }
+
+      // Handle case where Gemini returns concatenated JSON objects (common issue)
+      // Example: { "title": "..." }, { "title": "..." }, { "title": "..." }
+      if (rawResponse.includes('{ "title":') && rawResponse.includes('}, {')) {
+        console.log('[GeminiService] Detected concatenated JSON objects format');
+        
+        // Try wrapping in array brackets first
+        let wrappedResponse = rawResponse.trim();
+        if (!wrappedResponse.startsWith('[')) {
+          wrappedResponse = '[' + wrappedResponse + ']';
+        }
+        
+        try {
+          const parsed = JSON.parse(wrappedResponse);
+          if (Array.isArray(parsed)) {
+            console.log(`[GeminiService] Successfully parsed wrapped concatenated objects with ${parsed.length} items`);
+            return parsed;
+          }
+        } catch (e) {
+          console.log('[GeminiService] Failed to parse wrapped objects, trying manual split');
+        }
+        
+        // Manual split approach for concatenated objects
+        return this.parseCommaDelimitedObjects(rawResponse);
+      }
+
+      // If no array found or parsing failed, try to extract individual objects
+      console.log('[GeminiService] Attempting to extract individual JSON objects');
+      
+      // Find all JSON-like objects in the response with improved regex
+      const objectMatches = rawResponse.match(/\{\s*"[^"]*"\s*:\s*"[^"]*"[^{}]*\}/g);
+      
+      if (!objectMatches || objectMatches.length === 0) {
+        console.log('[GeminiService] No JSON objects found in response');
+        return [];
+      }
+
+      const actionItems: any[] = [];
+      
+      for (const objectStr of objectMatches) {
+        try {
+          // Clean up the object string
+          let cleanObjectStr = objectStr.trim();
+          
+          // Remove trailing commas that might cause parsing issues
+          cleanObjectStr = cleanObjectStr.replace(/,(\s*[}\]])/g, '$1');
+          
+          const parsed = JSON.parse(cleanObjectStr);
+          
+          // Validate that it has the expected action item structure
+          if (parsed && typeof parsed === 'object' && parsed.title && parsed.description) {
+            // Ensure all required fields exist with defaults
+            const actionItem = {
+              title: parsed.title || 'Untitled Action Item',
+              description: parsed.description || 'No description provided',
+              priority: parsed.priority || 'MEDIUM',
+              deadline: parsed.deadline || null,
+              assignee: parsed.assignee || null,
+              context: parsed.context || ''
+            };
+            
+            actionItems.push(actionItem);
+            console.log(`[GeminiService] Successfully parsed action item: "${actionItem.title}"`);
+          } else {
+            console.log(`[GeminiService] Skipping invalid action item object:`, parsed);
+          }
+        } catch (e) {
+          console.log(`[GeminiService] Failed to parse individual object: ${objectStr.substring(0, 100)}...`);
+        }
+      }
+
+      console.log(`[GeminiService] Successfully extracted ${actionItems.length} action items from malformed response`);
+      return actionItems;
+      
+    } catch (error) {
+      console.error('[GeminiService] Failed to parse action items response:', error);
+      console.error('[GeminiService] Raw response was:', rawResponse.substring(0, 500) + '...');
+      return [];
+    }
+  }
+
+  /**
+   * Parse comma-delimited JSON objects into an array
+   */
+  private parseCommaDelimitedObjects(rawResponse: string): any[] {
+    try {
+      console.log('[GeminiService] Parsing comma-delimited JSON objects');
+      
+      // Split by }, { pattern and reconstruct individual objects
+      const parts = rawResponse.split(/\},\s*\{/);
+      const actionItems: any[] = [];
+      
+      for (let i = 0; i < parts.length; i++) {
+        let part = parts[i].trim();
+        
+        // Add back the curly braces that were removed by split
+        if (i === 0 && !part.startsWith('{')) {
+          part = '{' + part;
+        }
+        if (i === parts.length - 1 && !part.endsWith('}')) {
+          part = part + '}';
+        }
+        if (i > 0 && i < parts.length - 1) {
+          part = '{' + part + '}';
+        }
+        if (i > 0 && i === parts.length - 1 && !part.startsWith('{')) {
+          part = '{' + part;
+        }
+        if (i === 0 && i < parts.length - 1 && !part.endsWith('}')) {
+          part = part + '}';
+        }
+        
+        // Clean up any remaining issues
+        part = part.replace(/^[,\s]+/, '').replace(/[,\s]+$/, '');
+        
+        try {
+          const parsed = JSON.parse(part);
+          if (parsed && typeof parsed === 'object' && parsed.title && parsed.description) {
+            const actionItem = {
+              title: parsed.title || 'Untitled Action Item',
+              description: parsed.description || 'No description provided',
+              priority: parsed.priority || 'MEDIUM',
+              deadline: parsed.deadline || null,
+              assignee: parsed.assignee || null,
+              context: parsed.context || ''
+            };
+            
+            actionItems.push(actionItem);
+            console.log(`[GeminiService] Successfully parsed delimited action item: "${actionItem.title}"`);
+          }
+        } catch (e) {
+          console.log(`[GeminiService] Failed to parse delimited part: ${part.substring(0, 100)}...`);
+        }
+      }
+      
+      console.log(`[GeminiService] Successfully extracted ${actionItems.length} action items from delimited response`);
+      return actionItems;
+      
+    } catch (error) {
+      console.error('[GeminiService] Error parsing comma-delimited objects:', error);
+      return [];
     }
   }
 

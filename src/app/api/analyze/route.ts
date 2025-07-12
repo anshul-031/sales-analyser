@@ -865,6 +865,76 @@ async function extractAndStoreInsights(analysisId: string, analysisResult: any, 
       Logger.info(`[Analyze API] [${requestId}] Stored call metrics for analysis:`, analysisId);
     }
 
+    // Extract and store action items if available
+    if (analysisResult.actionItems && Array.isArray(analysisResult.actionItems)) {
+      try {
+        const actionItemsToCreate = analysisResult.actionItems.map((item: any) => ({
+          analysisId,
+          title: item.title || item.action || item.task || item.description || 'Action Item',
+          description: item.description || item.details || item.context || '',
+          priority: (item.priority && ['LOW', 'MEDIUM', 'HIGH'].includes(item.priority.toUpperCase())) 
+            ? item.priority.toUpperCase() 
+            : 'MEDIUM',
+          deadline: item.deadline ? new Date(item.deadline) : new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
+          comments: item.comments || item.notes || '',
+        }));
+
+        if (actionItemsToCreate.length > 0) {
+          await DatabaseStorage.createMultipleActionItems(actionItemsToCreate);
+          Logger.info(`[Analyze API] [${requestId}] Stored ${actionItemsToCreate.length} action items for analysis:`, analysisId);
+        }
+      } catch (actionItemError) {
+        Logger.error(`[Analyze API] [${requestId}] Error storing action items:`, actionItemError);
+      }
+    }
+
+    // Also extract action items from analysis result if they're in a different format
+    if (analysisResult.follow_up_actions || analysisResult.next_steps || analysisResult.tasks) {
+      try {
+        const actionItemsSource = analysisResult.follow_up_actions || analysisResult.next_steps || analysisResult.tasks;
+        const actionItemsToCreate: Array<{
+          analysisId: string;
+          title: string;
+          description: string;
+          priority: 'LOW' | 'MEDIUM' | 'HIGH';
+          deadline: Date;
+          comments: string;
+        }> = [];
+
+        if (Array.isArray(actionItemsSource)) {
+          actionItemsSource.forEach((item: any, index: number) => {
+            if (typeof item === 'string') {
+              actionItemsToCreate.push({
+                analysisId,
+                title: item.substring(0, 100), // Limit title length
+                description: item,
+                priority: 'MEDIUM',
+                deadline: new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
+                comments: '',
+              });
+            } else if (typeof item === 'object' && item !== null) {
+              actionItemsToCreate.push({
+                analysisId,
+                title: item.title || item.action || item.task || `Action Item ${index + 1}`,
+                description: item.description || item.details || item.action || '',
+                priority: (item.priority && ['LOW', 'MEDIUM', 'HIGH'].includes(item.priority.toUpperCase())) 
+                  ? item.priority.toUpperCase() 
+                  : 'MEDIUM',
+                deadline: item.deadline ? new Date(item.deadline) : new Date(Date.now() + 24 * 60 * 60 * 1000),
+                comments: item.comments || item.notes || '',
+              });
+            }
+          });
+        }
+
+        if (actionItemsToCreate.length > 0) {
+          await DatabaseStorage.createMultipleActionItems(actionItemsToCreate);
+          Logger.info(`[Analyze API] [${requestId}] Stored ${actionItemsToCreate.length} additional action items for analysis:`, analysisId);
+        }
+      } catch (actionItemError) {
+        Logger.error(`[Analyze API] [${requestId}] Error storing additional action items:`, actionItemError);
+      }
+    }
   } catch (error) {
     Logger.error(`[Analyze API] [${requestId}] Error extracting insights:`, error);
   }
