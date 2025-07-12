@@ -50,6 +50,12 @@ export default function CallHistoryPage() {
   const [selectedRecording, setSelectedRecording] = useState<CallRecording | null>(null);
   const [loading, setLoading] = useState(true);
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalRecordings, setTotalRecordings] = useState(0);
+  const [recordingsPerPage] = useState(20);
+  
   // Use a ref to store the current selected recording ID to prevent race conditions
   const selectedRecordingIdRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState('analysis');
@@ -100,7 +106,7 @@ export default function CallHistoryPage() {
 
     try {
       console.log('[CallHistory] Polling: Reloading call recordings...');
-      const response = await fetch('/api/uploads-optimized?includeAnalyses=true');
+      const response = await fetch(`/api/uploads-optimized?includeAnalyses=true&page=${currentPage}&limit=${recordingsPerPage}`);
       const result = await response.json();
 
       if (result.success) {
@@ -121,7 +127,7 @@ export default function CallHistoryPage() {
     } catch (error) {
       console.error('[CallHistory] Polling: Error reloading recordings:', error);
     }
-  }, [user, loading]);
+  }, [user, loading, currentPage, recordingsPerPage]);
   
   // Set up polling for analysis in progress
 
@@ -145,9 +151,17 @@ export default function CallHistoryPage() {
 
   useEffect(() => {
     if (user && !authLoading) {
-      loadCallRecordings();
+      loadCallRecordings(currentPage);
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, currentPage]);
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      setSelectedRecording(null); // Clear selection when changing pages
+    }
+  };
 
   // Track selectedRecording changes
   // This effect synchronizes the selectedRecording state when the main list updates
@@ -172,13 +186,13 @@ export default function CallHistoryPage() {
     console.log(`[CallHistory-TAB-${trackingId}] activeTab changed to:`, activeTab);
   }, [activeTab]);
 
-  const loadCallRecordings = useCallback(async () => {
+  const loadCallRecordings = useCallback(async (page = 1) => {
     if (!user) return;
     
     try {
-      console.log('[CallHistory] Starting to load call recordings...');
+      console.log('[CallHistory] Starting to load call recordings for page:', page);
       setLoading(true);
-      const response = await fetch('/api/uploads-optimized?includeAnalyses=true');
+      const response = await fetch(`/api/uploads-optimized?includeAnalyses=true&page=${page}&limit=${recordingsPerPage}`);
       console.log('[CallHistory] Upload API response status:', response.status);
       
       const result = await response.json();
@@ -195,6 +209,13 @@ export default function CallHistoryPage() {
         
         console.log('[CallHistory] Filtered audio files:', audioFiles.length);
         console.log('[CallHistory] Audio files data:', audioFiles);
+        
+        // Update pagination state
+        if (result.pagination) {
+          setTotalPages(result.pagination.totalPages);
+          setTotalRecordings(result.pagination.total);
+          setCurrentPage(result.pagination.page);
+        }
         
         // Only update if there are actual changes to prevent re-renders
         setCallRecordings(prev => {
@@ -863,6 +884,52 @@ export default function CallHistoryPage() {
             </ul>
           )}
         </div>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-gray-200 bg-white">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-500">
+                Showing {((currentPage - 1) * recordingsPerPage) + 1} to {Math.min(currentPage * recordingsPerPage, totalRecordings)} of {totalRecordings} recordings
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <div className="flex items-center gap-1">
+                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                    const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
+                    if (pageNum > totalPages) return null;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`px-3 py-1 text-sm border rounded-md ${
+                          pageNum === currentPage
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                  className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Right Panel: Analysis Details */}

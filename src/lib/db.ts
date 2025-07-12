@@ -174,6 +174,11 @@ export class DatabaseStorage {
       const { includeAnalyses, page = 1, limit = 20 } = options;
       const skip = (page - 1) * limit;
 
+      // Get total count
+      const totalCount = await prisma.upload.count({
+        where: { userId },
+      });
+
       const uploads = await prisma.upload.findMany({
         where: { userId },
         orderBy: { uploadedAt: 'desc' },
@@ -214,7 +219,18 @@ export class DatabaseStorage {
           }
         });
       }
-      return uploads;
+      
+      return {
+        uploads,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+          hasNext: page * limit < totalCount,
+          hasPrev: page > 1,
+        },
+      };
     } catch (error) {
       Logger.error('[Database] Error getting uploads by user:', error);
       throw error;

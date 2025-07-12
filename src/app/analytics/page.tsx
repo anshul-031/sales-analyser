@@ -240,34 +240,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard
-            title="Total Recordings"
-            value={analyticsData?.totalRecordings || 0}
-            icon={Mic}
-            color="text-blue-600"
-          />
-          <StatCard
-            title="Analyses Completed"
-            value={analyticsData?.totalAnalyses || 0}
-            icon={BarChart3}
-            color="text-green-600"
-          />
-          <StatCard
-            title="Transcription Rate"
-            value={`${(analyticsData?.transcriptionRate || 0).toFixed(1)}%`}
-            icon={MessageSquare}
-            color="text-purple-600"
-          />
-          <StatCard
-            title="Processing Time"
-            value="< 2 min"
-            icon={Clock}
-            color="text-orange-600"
-            subtitle="Avg per recording"
-          />
-        </div>
+        {/* Stats Cards - Removed: Total Recordings, Analyses Completed, Transcription Rate, Processing Time as requested */}
 
         {/* Action Items Analytics */}
         {analyticsData?.actionItems && (

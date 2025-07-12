@@ -63,10 +63,9 @@ describe('AnalyticsPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Analytics Dashboard')).toBeInTheDocument();
-      expect(screen.getByText('Total Recordings')).toBeInTheDocument();
-      expect(screen.getAllByText('1')[0]).toBeInTheDocument(); // Use getAllByText and select the first one
-      expect(screen.getByText('Analyses Completed')).toBeInTheDocument();
-      expect(screen.getByText('100.0%')).toBeInTheDocument();
+      expect(screen.getByText('Call Activity')).toBeInTheDocument();
+      expect(screen.getByText('Recent Activity')).toBeInTheDocument();
+      expect(screen.getByText('Sentiment Analysis')).toBeInTheDocument();
     });
   });
 
@@ -78,8 +77,9 @@ describe('AnalyticsPage', () => {
       expect(screen.getByText('Analytics Dashboard')).toBeInTheDocument();
       // Check that the loading spinner is gone, but no data is displayed
       expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
-      expect(screen.getByText('Total Recordings')).toBeInTheDocument();
-      expect(screen.getAllByText('0')[0]).toBeInTheDocument(); // Use getAllByText and select the first one
+      expect(screen.getByText('Call Activity')).toBeInTheDocument();
+      expect(screen.getByText('Recent Activity')).toBeInTheDocument();
+      expect(screen.getByText('Sentiment Analysis')).toBeInTheDocument();
     });
   });
 });

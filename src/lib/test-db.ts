@@ -68,8 +68,8 @@ async function testDatabaseConnection() {
     Logger.info('[DB Test] Created test insights');
 
     // Test queries
-    const uploads = await DatabaseStorage.getUploadsByUser(testUserId);
-    Logger.info('[DB Test] User uploads:', uploads.length);
+    const uploadsResult = await DatabaseStorage.getUploadsByUser(testUserId);
+    Logger.info('[DB Test] User uploads:', uploadsResult.uploads.length);
 
     const analyses = await DatabaseStorage.getAnalysesByUser(testUserId);
     Logger.info('[DB Test] User analyses:', analyses.length);

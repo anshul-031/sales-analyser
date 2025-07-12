@@ -67,7 +67,8 @@ export async function DELETE(request: NextRequest) {
     Logger.info('[Upload API] Deleting all uploads for user:', user.id);
 
     // Get all uploads for the user
-    const uploads = await DatabaseStorage.getUploadsByUser(user.id);
+    const uploadsResult = await DatabaseStorage.getUploadsByUser(user.id);
+    const uploads = uploadsResult.uploads;
     
     if (uploads.length === 0) {
       Logger.info('[Upload API] No uploads found for user:', user.id);

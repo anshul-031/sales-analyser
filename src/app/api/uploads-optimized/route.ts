@@ -17,9 +17,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const includeAnalyses = searchParams.get('includeAnalyses') !== 'false';
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || '20');
 
-    const uploads = await DatabaseStorage.getUploadsByUser(user.id, {
+    const result = await DatabaseStorage.getUploadsByUser(user.id, {
       includeAnalyses,
       page,
       limit,
@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      uploads: serializeBigInt(uploads),
+      uploads: serializeBigInt(result.uploads),
+      pagination: result.pagination,
     });
 
   } catch (error) {

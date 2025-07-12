@@ -14,6 +14,7 @@ jest.mock('@prisma/client', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       delete: jest.fn(),
+      count: jest.fn(),
     },
     analysis: {
       create: jest.fn(),
@@ -146,11 +147,14 @@ describe('DatabaseStorage', () => {
     });
 
     it('getUploadsByUser should retrieve uploads', async () => {
+        (prisma.upload.count as jest.Mock).mockResolvedValue(1);
         (prisma.upload.findMany as jest.Mock).mockResolvedValue([mockUpload]);
         (prisma.analysis.findMany as jest.Mock).mockResolvedValue([mockAnalysis]);
-        const uploads = await DatabaseStorage.getUploadsByUser('user1');
-        expect(uploads).toHaveLength(1);
-        expect((uploads[0] as any).analyses).toBeDefined();
+        const result = await DatabaseStorage.getUploadsByUser('user1');
+        expect(result.uploads).toHaveLength(1);
+        expect((result.uploads[0] as any).analyses).toBeDefined();
+        expect(result.pagination).toBeDefined();
+        expect(result.pagination.total).toBe(1);
       });
 
     it('deleteUpload should delete an upload', async () => {

@@ -85,7 +85,8 @@ export async function GET(request: NextRequest) {
 
     Logger.info('[Cleanup API] Getting cleanup status for user:', userId);
 
-    const uploads = await DatabaseStorage.getUploadsByUser(userId);
+    const uploadsResult = await DatabaseStorage.getUploadsByUser(userId);
+    const uploads = uploadsResult.uploads;
     const analyses = await DatabaseStorage.getAnalysesByUser(userId);
     
     const completedAnalyses = analyses.filter(a => isAnalysisCompleted(a.status));

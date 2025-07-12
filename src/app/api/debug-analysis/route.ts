@@ -65,7 +65,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all uploads for user
-    const uploads = await DatabaseStorage.getUploadsByUser(user.id, { includeAnalyses: true });
+    const uploadsResult = await DatabaseStorage.getUploadsByUser(user.id, { includeAnalyses: true });
+    const uploads = uploadsResult.uploads;
     
     return NextResponse.json({
       success: true,

@@ -54,6 +54,12 @@ export default function CallAnalysisPage() {
   const [loading, setLoading] = useState(false);
   const [analyzingCustom, setAnalyzingCustom] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalRecordings, setTotalRecordings] = useState(0);
+  const [recordingsPerPage] = useState(20);
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
@@ -63,9 +69,17 @@ export default function CallAnalysisPage() {
 
   useEffect(() => {
     if (user && !authLoading) {
-      loadCallRecordings();
+      loadCallRecordings(currentPage);
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, currentPage]);
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      setSelectedRecordings(new Set()); // Clear selection when changing pages
+    }
+  };
 
   useEffect(() => {
     filterRecordings();
@@ -91,14 +105,14 @@ export default function CallAnalysisPage() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [filteredRecordings]);
 
-  const loadCallRecordings = async () => {
+  const loadCallRecordings = async (page = 1) => {
     if (!user) return;
     
     try {
       setLoading(true);
-      Logger.info('[CallAnalysis] Loading call recordings for user:', user.id);
+      Logger.info('[CallAnalysis] Loading call recordings for user:', user.id, 'page:', page);
       
-      const response = await fetch('/api/uploads-optimized');
+      const response = await fetch(`/api/uploads-optimized?page=${page}&limit=${recordingsPerPage}`);
       const result = await response.json();
       
       if (result.success) {
@@ -116,9 +130,16 @@ export default function CallAnalysisPage() {
           console.log('[DEBUG] uploadedAt JSON:', JSON.stringify(audioFiles[0].uploadedAt));
         }
 
+        // Update pagination state
+        if (result.pagination) {
+          setTotalPages(result.pagination.totalPages);
+          setTotalRecordings(result.pagination.total);
+          setCurrentPage(result.pagination.page);
+        }
+
         // The upload API already includes analysis data
         setCallRecordings(audioFiles);
-        Logger.info('[CallAnalysis] Loaded', audioFiles.length, 'call recordings');
+        Logger.info('[CallAnalysis] Loaded', audioFiles.length, 'call recordings for page', page);
       } else {
         console.error('[CallAnalysis] Failed to load recordings:', result.error);
         alert(`Failed to load recordings: ${result.error || 'Unknown error'}`);
@@ -521,6 +542,52 @@ export default function CallAnalysisPage() {
                 </div>
               )}
             </div>
+            
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="mt-4 p-4 bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-500">
+                    Showing {((currentPage - 1) * recordingsPerPage) + 1} to {Math.min(currentPage * recordingsPerPage, totalRecordings)} of {totalRecordings} recordings
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage <= 1}
+                      className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    <div className="flex items-center gap-1">
+                      {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                        const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
+                        if (pageNum > totalPages) return null;
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`px-3 py-1 text-sm border rounded-md ${
+                              pageNum === currentPage
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage >= totalPages}
+                      className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Analysis Panel */}
