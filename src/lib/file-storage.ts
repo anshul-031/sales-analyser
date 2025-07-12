@@ -43,7 +43,7 @@ export interface StoredAnalysis {
   upload: StoredUpload;
 }
 
-const DATA_DIR = path.join(os.tmpdir(), 'data');
+const DATA_DIR = path.join(os.tmpdir() || './tmp', 'data');
 const UPLOADS_FILE = path.join(DATA_DIR, 'uploads.json');
 const ANALYSES_FILE = path.join(DATA_DIR, 'analyses.json');
 

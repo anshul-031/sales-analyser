@@ -42,7 +42,11 @@ export interface EmailOptions {
 // Send email
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
   try {
-    if (!SMTP_USER || !SMTP_PASS) {
+    // Read environment variables dynamically for testing
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+    
+    if (!smtpUser || !smtpPass) {
       console.error('SMTP credentials not configured');
       return false;
     }

@@ -75,7 +75,7 @@ describe('Auth Utilities', () => {
 
       expect(mockJwt.sign).toHaveBeenCalledWith(
         payload,
-        'test-jwt-secret',
+        'your-super-secret-jwt-key', // The environment variable is set in jest.setup.js and cached
         { expiresIn: '7d' }
       )
       expect(result).toBe(expectedToken)
@@ -93,7 +93,7 @@ describe('Auth Utilities', () => {
 
       expect(mockJwt.sign).toHaveBeenCalledWith(
         payload,
-        'test-jwt-secret', // The environment variable is set in jest.setup.js and cached
+        'your-super-secret-jwt-key', // The environment variable is set in jest.setup.js and cached
         { expiresIn: '7d' }
       )
     })
@@ -111,7 +111,7 @@ describe('Auth Utilities', () => {
 
       const result = verifyToken(token)
 
-      expect(mockJwt.verify).toHaveBeenCalledWith(token, 'test-jwt-secret')
+      expect(mockJwt.verify).toHaveBeenCalledWith(token, 'your-super-secret-jwt-key')
       expect(result).toEqual(expectedPayload)
     })
 

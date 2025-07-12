@@ -1,121 +1,119 @@
-// Tests for email utility functions
-describe('Email Utility Module', () => {
-  describe('Email validation', () => {
-    it('should validate email format', () => {
-      const validEmails = [
-        'test@example.com',
-        'user.name@domain.co.uk',
-        'test+tag@example.org',
-        'user123@subdomain.example.com',
-      ]
-      
-      const invalidEmails = [
-        'invalid-email',
-        '@domain.com',
-        'user@',
-        'user@domain',
-      ]
-      
-      validEmails.forEach(email => {
-        expect(email).toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
-      })
-      
-      invalidEmails.forEach(email => {
-        expect(email).not.toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
-      })
-    })
-  })
+import nodemailer from 'nodemailer';
 
-  describe('Email templates', () => {
-    it('should define verification email template structure', () => {
-      const verificationTemplate = {
-        subject: 'Verify your email address',
-        htmlContent: '<p>Please click the link to verify your email</p>',
-        textContent: 'Please click the link to verify your email',
-        variables: {
-          verificationUrl: 'https://example.com/verify',
-          userName: 'Test User',
-        },
-      }
-      
-      expect(typeof verificationTemplate.subject).toBe('string')
-      expect(typeof verificationTemplate.htmlContent).toBe('string')
-      expect(typeof verificationTemplate.textContent).toBe('string')
-      expect(typeof verificationTemplate.variables.verificationUrl).toBe('string')
-    })
+// Mock nodemailer before any imports
+const mockSendMail = jest.fn();
+const mockCreateTransport = jest.fn().mockReturnValue({
+  sendMail: mockSendMail,
+});
 
-    it('should define password reset email template structure', () => {
-      const passwordResetTemplate = {
-        subject: 'Reset your password',
-        htmlContent: '<p>Click here to reset your password</p>',
-        textContent: 'Click here to reset your password',
-        variables: {
-          resetUrl: 'https://example.com/reset',
-          userName: 'Test User',
-          expiryTime: '1 hour',
-        },
-      }
-      
-      expect(typeof passwordResetTemplate.subject).toBe('string')
-      expect(typeof passwordResetTemplate.variables.resetUrl).toBe('string')
-      expect(typeof passwordResetTemplate.variables.expiryTime).toBe('string')
-    })
-  })
+jest.mock('nodemailer', () => ({
+  createTransport: mockCreateTransport,
+}));
 
-  describe('Email configuration', () => {
-    it('should define SMTP configuration structure', () => {
-      const smtpConfig = {
-        host: 'smtp.example.com',
-        port: 587,
-        secure: false,
-        auth: {
-          user: 'user@example.com',
-          pass: 'password',
-        },
-      }
-      
-      expect(typeof smtpConfig.host).toBe('string')
-      expect(typeof smtpConfig.port).toBe('number')
-      expect(typeof smtpConfig.secure).toBe('boolean')
-      expect(typeof smtpConfig.auth.user).toBe('string')
-    })
+describe('Email Service', () => {
+  let sendEmail: (options: any) => Promise<boolean>;
+  let sendEmailVerification: (email: string, token: string) => Promise<boolean>;
+  let sendPasswordResetEmail: (email: string, token: string) => Promise<boolean>;
+  const originalEnv = process.env;
 
-    it('should define email sending limits', () => {
-      const emailLimits = {
-        maxRecipientsPerEmail: 50,
-        maxEmailsPerHour: 100,
-        maxEmailsPerDay: 1000,
-        rateLimit: 5, // seconds between emails
-      }
-      
-      expect(typeof emailLimits.maxRecipientsPerEmail).toBe('number')
-      expect(emailLimits.maxRecipientsPerEmail).toBeGreaterThan(0)
-      expect(emailLimits.maxEmailsPerHour).toBeGreaterThan(0)
-      expect(emailLimits.rateLimit).toBeGreaterThan(0)
-    })
-  })
+  beforeEach(async () => {
+    jest.resetModules();
+    process.env = {
+      ...originalEnv,
+      SMTP_USER: 'testuser',
+      SMTP_PASS: 'testpass',
+      FROM_EMAIL: 'from@example.com',
+      NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+    };
 
-  describe('Email validation rules', () => {
-    it('should define domain validation', () => {
-      const allowedDomains = ['example.com', 'test.org']
-      const blockedDomains = ['spam.com', 'temp-mail.org']
-      
-      expect(Array.isArray(allowedDomains)).toBe(true)
-      expect(Array.isArray(blockedDomains)).toBe(true)
-      expect(allowedDomains.length).toBeGreaterThan(0)
-    })
+    mockSendMail.mockClear();
+    mockCreateTransport.mockClear();
+    
+    // Reset the mock to return a working transporter
+    mockCreateTransport.mockReturnValue({
+      sendMail: mockSendMail,
+    });
 
-    it('should handle email bounces and failures', () => {
-      const bounceHandling = {
-        maxBounces: 3,
-        suspendAfterBounces: true,
-        retryAttempts: 2,
-        retryDelay: 300, // seconds
-      }
-      
-      expect(typeof bounceHandling.maxBounces).toBe('number')
-      expect(typeof bounceHandling.suspendAfterBounces).toBe('boolean')
-      expect(bounceHandling.retryAttempts).toBeGreaterThanOrEqual(0)
-    })
-  })
-})
+    const emailModule = await import('../email');
+    sendEmail = emailModule.sendEmail;
+    sendEmailVerification = emailModule.sendEmailVerification;
+    sendPasswordResetEmail = emailModule.sendPasswordResetEmail;
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  describe('sendEmail', () => {
+    it('should send an email with the correct options', async () => {
+      mockSendMail.mockResolvedValue({ messageId: '123' });
+      const options = {
+        to: 'test@example.com',
+        subject: 'Test Subject',
+        html: '<p>Test HTML</p>',
+      };
+
+      const result = await sendEmail(options);
+
+      expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({
+        from: `"Sales Analyzer" <${process.env.FROM_EMAIL}>`,
+        to: 'test@example.com',
+        subject: 'Test Subject',
+        html: '<p>Test HTML</p>',
+      }));
+      expect(result).toBe(true);
+    });
+
+    it('should return false if sending email fails', async () => {
+      mockSendMail.mockRejectedValue(new Error('Failed to send'));
+      const options = {
+        to: 'test@example.com',
+        subject: 'Test Subject',
+        html: '<p>Test HTML</p>',
+      };
+
+      const result = await sendEmail(options);
+
+      expect(result).toBe(false);
+    });
+
+    it('should return false if SMTP credentials are not configured', async () => {
+      delete process.env.SMTP_USER;
+      delete process.env.SMTP_PASS;
+
+      // Clear the mock before testing
+      mockSendMail.mockClear();
+
+      const emailModule = await import('../email');
+      const { sendEmail: sendEmailLocal } = emailModule;
+
+      const options = {
+        to: 'test@example.com',
+        subject: 'Test Subject',
+        html: '<p>Test HTML</p>',
+      };
+
+      const result = await sendEmailLocal(options);
+      expect(result).toBe(false);
+      expect(mockSendMail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendEmailVerification', () => {
+    it('should send a verification email', async () => {
+      mockSendMail.mockResolvedValue({ messageId: '123' });
+      const result = await sendEmailVerification('test@example.com', 'test-token');
+      expect(mockSendMail).toHaveBeenCalled();
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('sendPasswordResetEmail', () => {
+    it('should send a password reset email', async () => {
+      mockSendMail.mockResolvedValue({ messageId: '123' });
+      const result = await sendPasswordResetEmail('test@example.com', 'test-token');
+      expect(mockSendMail).toHaveBeenCalled();
+      expect(result).toBe(true);
+    });
+  });
+});

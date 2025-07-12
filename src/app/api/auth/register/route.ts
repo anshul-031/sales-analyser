@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
-    }) as any;
+    });
 
     if (existingUser) {
       return NextResponse.json(
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
         emailVerificationToken,
         emailVerificationExpires,
       },
-    }) as any;
+    });
 
     // Send verification email
     const emailSent = await sendEmailVerification(user.email, emailVerificationToken, request);
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
         lastName: user.lastName,
         isEmailVerified: user.isEmailVerified,
       },
-    });
+    }, { status: 201 });
   } catch (error) {
     console.error('Registration error:', error);
     return NextResponse.json(

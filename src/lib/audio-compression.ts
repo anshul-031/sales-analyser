@@ -100,6 +100,9 @@ export class AudioCompressor {
     const startTime = Date.now();
     const originalSize = file.size;
 
+    if (!this.audioContext) {
+      throw new Error('Web Audio API not supported');
+    }
     try {
       console.log('[AudioCompressor] 🎵 Starting compression:', {
         filename: file.name,

@@ -18,12 +18,12 @@ describe('LoggingConfig', () => {
     expect(LoggingConfig.timeouts.analysis).toBe(2700000);
   });
 
-  it('should be overridden by environment variables', () => {
+  it('should be overridden by environment variables', async () => {
     process.env.LOG_LEVEL = 'info';
     process.env.TRANSCRIPTION_TIMEOUT_MS = '1000';
     process.env.ANALYSIS_TIMEOUT_MS = '2000';
 
-    const { LoggingConfig: updatedConfig } = require('../logging-config');
+    const { LoggingConfig: updatedConfig } = await import('../logging-config');
 
     expect(updatedConfig.logLevel).toBe('info');
     expect(updatedConfig.timeouts.transcription).toBe(1000);
@@ -73,10 +73,10 @@ describe('ProductionMonitoring', () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('"context":"test"'));
   });
 
-  it('should log startup message', () => {
+  it('should log startup message', async () => {
     // Re-require the module to execute the startup logic
-    jest.isolateModules(() => {
-      require('../logging-config');
+    await jest.isolateModulesAsync(async () => {
+      await import('../logging-config');
     });
     
     // Check for startup log
