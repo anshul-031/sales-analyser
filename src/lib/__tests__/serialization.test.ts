@@ -70,7 +70,7 @@ describe('Serialization', () => {
       expect(result.user.metadata.createdAt).toBe('2023-01-01T00:00:00.000Z')
     })
 
-    it('should handle special date fields', () => {
+    it('should handle special date fields with Date objects', () => {
       const obj = {
         uploadedAt: new Date('2023-01-01T12:00:00Z'),
         createdAt: new Date('2023-01-02T12:00:00Z'),
@@ -81,6 +81,48 @@ describe('Serialization', () => {
       expect(result.uploadedAt).toBe('2023-01-01T12:00:00.000Z')
       expect(result.createdAt).toBe('2023-01-02T12:00:00.000Z')
       expect(result.updatedAt).toBe('2023-01-03T12:00:00.000Z')
+      expect(result.regularField).toBe('test')
+    })
+
+    it('should handle special date fields with string values', () => {
+      const obj = {
+        uploadedAt: '2023-01-01T12:00:00Z',
+        createdAt: '2023-01-02T12:00:00Z',
+        updatedAt: '2023-01-03T12:00:00Z',
+        regularField: 'test'
+      }
+      const result = serializeBigInt(obj)
+      expect(result.uploadedAt).toBe('2023-01-01T12:00:00.000Z')
+      expect(result.createdAt).toBe('2023-01-02T12:00:00.000Z')
+      expect(result.updatedAt).toBe('2023-01-03T12:00:00.000Z')
+      expect(result.regularField).toBe('test')
+    })
+
+    it('should handle invalid date strings in special date fields', () => {
+      const obj = {
+        uploadedAt: 'invalid-date-string',
+        createdAt: 'not-a-date',
+        updatedAt: '',
+        regularField: 'test'
+      }
+      const result = serializeBigInt(obj)
+      expect(result.uploadedAt).toBe('invalid-date-string')
+      expect(result.createdAt).toBe('not-a-date')
+      expect(result.updatedAt).toBe('')
+      expect(result.regularField).toBe('test')
+    })
+
+    it('should handle special date fields with other types', () => {
+      const obj = {
+        uploadedAt: { nested: 'object' },
+        createdAt: null,
+        updatedAt: undefined,
+        regularField: 'test'
+      }
+      const result = serializeBigInt(obj)
+      expect(result.uploadedAt).toEqual({ nested: 'object' })
+      expect(result.createdAt).toBeNull()
+      expect(result.updatedAt).toBeUndefined()
       expect(result.regularField).toBe('test')
     })
   })
