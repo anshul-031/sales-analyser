@@ -19,6 +19,9 @@ const eslintConfig = [
       "react/no-unescaped-entities": "off",
     },
   },
+  {
+    ignores: ["**/*.test.ts", "**/*.spec.ts", "**/*.test.tsx", "**/*.spec.tsx", "**/__tests__/**"],
+  }
 ];
 
 export default eslintConfig;
