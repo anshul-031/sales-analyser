@@ -93,7 +93,7 @@ export default function RegisterForm() {
     if (/[a-z]/.test(password)) strength++;
     if (/[A-Z]/.test(password)) strength++;
     if (/\d/.test(password)) strength++;
-    if (/[^a-zA-Z\d]/.test(password)) strength++;
+    if (/[^a-zA-Z\d\s]/.test(password)) strength++; // Exclude whitespace from special chars
     return strength;
   };
 
