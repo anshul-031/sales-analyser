@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BarChart3, Upload, FileAudio, User, LogOut, Menu, X, Code } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import Logo from './Logo';
 
 const navigationItems = [
   {
@@ -70,8 +71,7 @@ export default function Navigation() {
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <BarChart3 className="h-8 w-8 text-indigo-600" />
-              <span className="ml-2 text-xl font-bold text-gray-900">AI Call Analyser</span>
+              <Logo size="md" />
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
               {navigationItems.map((item) => {

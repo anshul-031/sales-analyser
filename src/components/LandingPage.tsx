@@ -21,6 +21,7 @@ import {
   Brain
 } from 'lucide-react';
 import ContactForm from './ContactForm';
+import Logo from './Logo';
 
 export default function LandingPage() {
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
@@ -395,8 +396,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center mb-4">
-                <BarChart3 className="h-8 w-8 text-blue-400" />
-                <span className="ml-2 text-xl font-bold">Sales Performance Analyzer</span>
+                <Logo size="md" />
               </div>
               <p className="text-gray-400 mb-6 max-w-md">
                 AI-powered call analysis that helps teams improve performance, close more deals, 
