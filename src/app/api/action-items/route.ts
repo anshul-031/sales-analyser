@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DatabaseStorage } from '@/lib/db';
 import { Logger } from '@/lib/utils';
 import { getAuthenticatedUser } from '@/lib/auth';
+import { serializeBigInt } from '@/lib/serialization';
 
 /**
  * @swagger
@@ -151,7 +152,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      actionItems
+      actionItems: serializeBigInt(actionItems)
     });
   } catch (error) {
     Logger.error('[ActionItems API] Error getting action items:', error);
@@ -209,7 +210,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      actionItem
+      actionItem: serializeBigInt(actionItem)
     }, { status: 201 });
   } catch (error) {
     Logger.error('[ActionItems API] Error creating action item:', error);
@@ -271,7 +272,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      actionItem: updatedActionItem
+      actionItem: serializeBigInt(updatedActionItem)
     });
   } catch (error) {
     Logger.error('[ActionItems API] Error updating action item:', error);
