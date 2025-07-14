@@ -390,7 +390,7 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
   /**
    * Analyze sales call using custom parameters
    */
-  async analyzeWithCustomParameters(transcription: string, parameters: Array<{id: string; name: string; description: string; prompt: string; enabled: boolean}>): Promise<any> {
+  async analyzeWithCustomParameters(transcription: string, parameters: Array<{id: string; name: string; description: string; prompt: string; enabled: boolean}>, userId?: string, overrideActionItemTypes?: string[]): Promise<any> {
     try {
       console.log('[GeminiService] Starting custom parameters analysis');
       
@@ -448,8 +448,8 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
       const customScores = Object.values(customResults).map((r: any) => r.score).filter(s => s > 0);
       const customOverallScore = customScores.length > 0 ? Math.round(customScores.reduce((a, b) => a + b, 0) / customScores.length) : 0;
       
-      // Extract action items
-      const actionItems = await this.extractActionItems(transcription);
+      // Extract action items with override types if provided
+      const actionItems = await this.extractActionItems(transcription, userId, overrideActionItemTypes);
       
       console.log('[GeminiService] Custom parameters analysis completed');
       
@@ -473,7 +473,7 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
   /**
    * Analyze sales call using default parameters
    */
-  async analyzeWithDefaultParameters(transcription: string): Promise<any> {
+  async analyzeWithDefaultParameters(transcription: string, userId?: string, overrideActionItemTypes?: string[]): Promise<any> {
     try {
       console.log('[GeminiService] Starting default analysis');
       
@@ -532,8 +532,8 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
       const scores = Object.values(results).map((r: any) => r.score).filter(s => s > 0);
       const overallScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
       
-      // Extract action items
-      const actionItems = await this.extractActionItems(transcription);
+      // Extract action items with override types if provided
+      const actionItems = await this.extractActionItems(transcription, userId, overrideActionItemTypes);
       
       console.log('[GeminiService] Default analysis completed');
       
@@ -557,7 +557,7 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
   /**
    * Analyze sales call with custom prompt
    */
-  async analyzeWithCustomPrompt(transcription: string, customPrompt: string): Promise<any> {
+  async analyzeWithCustomPrompt(transcription: string, customPrompt: string, userId?: string, overrideActionItemTypes?: string[]): Promise<any> {
     try {
       console.log('[GeminiService] Starting custom analysis');
       
@@ -588,8 +588,8 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
         return 'summary' in data && 'key_findings' in data && 'scores' in data && 'recommendations' in data && 'specific_examples' in data;
       });
       
-      // Extract action items
-      const actionItems = await this.extractActionItems(transcription);
+      // Extract action items with override types if provided
+      const actionItems = await this.extractActionItems(transcription, userId, overrideActionItemTypes);
       
       console.log('[GeminiService] Custom analysis completed');
       
@@ -627,9 +627,9 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
   }
 
   /**
-   * Extract action items from transcription
+   * Extract action items from transcription using user's custom action item types
    */
-  async extractActionItems(transcription: string): Promise<any[]> {
+  async extractActionItems(transcription: string, userId?: string, overrideTypeIds?: string[]): Promise<any[]> {
     try {
       console.log('[GeminiService] Extracting action items from transcription');
       
@@ -649,6 +649,46 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
         // Ignore parsing errors, use transcription as is (for backward compatibility)
         console.log('[GeminiService] Using transcription as plain text for action item extraction');
       }
+
+      // Get user's custom action item types if userId is provided
+      let customPrompts = '';
+      let actionItemTypes: any[] = [];
+      
+      if (userId) {
+        try {
+          const { DatabaseStorage } = await import('@/lib/db');
+          
+          if (overrideTypeIds && overrideTypeIds.length > 0) {
+            // Use override types for this analysis
+            console.log('[GeminiService] Using override action item types:', overrideTypeIds);
+            actionItemTypes = [];
+            for (const typeId of overrideTypeIds) {
+              const type = await DatabaseStorage.getActionItemTypeById(typeId);
+              if (type && type.userId === userId) {
+                actionItemTypes.push(type);
+              }
+            }
+          } else {
+            // Use user's enabled types
+            actionItemTypes = await DatabaseStorage.getEnabledActionItemTypesByUserId(userId);
+          }
+          
+          if (actionItemTypes.length > 0) {
+            customPrompts = `
+
+IMPORTANT: Focus on extracting action items that match these specific types that the user wants to track:
+
+${actionItemTypes.map((type, index) => `
+${index + 1}. **${type.name}**: ${type.description}
+   Detection criteria: ${type.prompt}
+`).join('')}
+
+For each action item found, include a "typeId" field with the ID of the matching action item type. If an action item doesn't clearly match any of the defined types, you may omit the "typeId" field.`;
+          }
+        } catch (error) {
+          console.log('[GeminiService] Could not load user action item types, using default extraction:', error);
+        }
+      }
       
       const prompt = `Analyze the following sales call transcription and extract action items that need to be completed based on the conversation. Look for:
 
@@ -659,7 +699,7 @@ IMPORTANT: Your response must be a single, valid JSON object and nothing else. D
 5. Meetings or calls to be scheduled
 6. Documents to be shared
 7. Decisions to be made
-8. People to be contacted
+8. People to be contacted${customPrompts}
 
 Sales Call Transcription:
 ${transcriptionForAnalysis}
@@ -673,7 +713,7 @@ IMPORTANT: Your response must be a single, valid JSON array and nothing else. Do
     "priority": "<LOW, MEDIUM, or HIGH based on urgency>",
     "deadline": "<YYYY-MM-DD format or null if no specific deadline mentioned>",
     "assignee": "<Who is responsible (if mentioned) or null>",
-    "context": "<Relevant context from the conversation>"
+    "context": "<Relevant context from the conversation>"${actionItemTypes.length > 0 ? ',\n    "typeId": "<ID of matching action item type or null if no clear match>"' : ''}
   }
 ]
 

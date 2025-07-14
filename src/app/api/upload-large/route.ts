@@ -91,7 +91,17 @@ async function getUploadUrls({ key, uploadId, parts }: { key: string, uploadId: 
 }
 
 async function completeUpload(request: NextRequest, params: any, user: any) {
-    const { key, uploadId, parts, fileName, contentType, fileSize, customParameters, originalContentType } = params;
+    const { 
+        key, 
+        uploadId, 
+        parts, 
+        fileName, 
+        contentType, 
+        fileSize, 
+        customParameters, 
+        selectedActionItemTypes,
+        originalContentType 
+    } = params;
     
     // Validate file size (200MB limit)
     const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
@@ -140,6 +150,7 @@ async function completeUpload(request: NextRequest, params: any, user: any) {
             uploadIds: [newUpload.id],
             analysisType: 'parameters',
             customParameters: customParameters || [],
+            selectedActionItemTypes: selectedActionItemTypes || [],
             userId: user.id,
             autoTriggered: true
         };

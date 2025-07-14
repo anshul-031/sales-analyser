@@ -157,12 +157,13 @@ export async function POST(request: NextRequest) {
 
     Logger.info(`[Analyze API] [${requestId}] User authenticated:`, user.id);
 
-    const { uploadIds, analysisType, customPrompt, customParameters } = await request.json();
+    const { uploadIds, analysisType, customPrompt, customParameters, selectedActionItemTypes } = await request.json();
     Logger.info(`[Analyze API] [${requestId}] Request payload:`, {
       uploadIds: uploadIds?.length || 0,
       analysisType,
       hasCustomPrompt: !!customPrompt,
-      customParametersCount: customParameters?.length || 0
+      customParametersCount: customParameters?.length || 0,
+      selectedActionItemTypesCount: selectedActionItemTypes?.length || 0
     });
 
     if (!uploadIds || !Array.isArray(uploadIds) || uploadIds.length === 0) {
@@ -286,7 +287,7 @@ export async function POST(request: NextRequest) {
           fileUrl: upload.fileUrl,
           mimeType: upload.mimeType,
           filename: upload.filename
-        }, requestId).catch(error => {
+        }, requestId, user.id, selectedActionItemTypes).catch(error => {
           Logger.error(`[Analyze API] [${requestId}] Background analysis failed for`, analysis.id + ':', error);
         });
 
@@ -429,7 +430,7 @@ export async function GET(request: NextRequest) {
 }
 
 // Background processing function
-async function processAnalysisInBackground(analysisId: string, upload: { id: string, fileUrl: string, mimeType: string, filename: string }, requestId: string = 'unknown') {
+async function processAnalysisInBackground(analysisId: string, upload: { id: string, fileUrl: string, mimeType: string, filename: string }, requestId: string = 'unknown', userId: string, selectedActionItemTypes?: string[]) {
   const analysisStartTime = Date.now();
   
   // Log system health at start of processing
@@ -551,7 +552,7 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
         if (analysis.analysisType === 'CUSTOM' && analysis.customPrompt) {
           Logger.info(`[Analyze API] [${requestId}] Starting custom analysis with prompt`);
           analysisResult = await withGeminiTimeout(
-            geminiService.analyzeWithCustomPrompt(transcription, analysis.customPrompt),
+            geminiService.analyzeWithCustomPrompt(transcription, analysis.customPrompt, userId, selectedActionItemTypes),
             'Custom Analysis',
             requestId
           );
@@ -560,14 +561,14 @@ async function processAnalysisInBackground(analysisId: string, upload: { id: str
           // Type assertion for JSON to expected parameter type
           const parameters = analysis.customParameters as { id: string; name: string; description: string; prompt: string; enabled: boolean; }[];
           analysisResult = await withGeminiTimeout(
-            geminiService.analyzeWithCustomParameters(transcription, parameters),
+            geminiService.analyzeWithCustomParameters(transcription, parameters, userId, selectedActionItemTypes),
             'Parameter Analysis',
             requestId
           );
         } else {
           Logger.info(`[Analyze API] [${requestId}] Starting default analysis`);
           analysisResult = await withGeminiTimeout(
-            geminiService.analyzeWithDefaultParameters(transcription),
+            geminiService.analyzeWithDefaultParameters(transcription, userId, selectedActionItemTypes),
             'Default Analysis',
             requestId
           );
@@ -877,6 +878,7 @@ async function extractAndStoreInsights(analysisId: string, analysisResult: any, 
             : 'MEDIUM',
           deadline: item.deadline ? new Date(item.deadline) : new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
           comments: item.comments || item.notes || '',
+          typeId: item.typeId || null, // Include typeId if provided by AI
         }));
 
         if (actionItemsToCreate.length > 0) {
@@ -899,6 +901,7 @@ async function extractAndStoreInsights(analysisId: string, analysisResult: any, 
           priority: 'LOW' | 'MEDIUM' | 'HIGH';
           deadline: Date;
           comments: string;
+          typeId?: string | null;
         }> = [];
 
         if (Array.isArray(actionItemsSource)) {
@@ -911,6 +914,7 @@ async function extractAndStoreInsights(analysisId: string, analysisResult: any, 
                 priority: 'MEDIUM',
                 deadline: new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
                 comments: '',
+                typeId: null, // String items don't have typeId
               });
             } else if (typeof item === 'object' && item !== null) {
               actionItemsToCreate.push({
@@ -922,6 +926,7 @@ async function extractAndStoreInsights(analysisId: string, analysisResult: any, 
                   : 'MEDIUM',
                 deadline: item.deadline ? new Date(item.deadline) : new Date(Date.now() + 24 * 60 * 60 * 1000),
                 comments: item.comments || item.notes || '',
+                typeId: item.typeId || null, // Include typeId if provided
               });
             }
           });

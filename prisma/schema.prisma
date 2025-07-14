@@ -27,6 +27,7 @@ model User {
   // User relationships
   uploads   Upload[]
   analyses  Analysis[]
+  actionItemTypes ActionItemType[]
 
   @@map("users")
 }
@@ -119,13 +120,35 @@ model ActionItem {
   status      ActionItemStatus   @default(NOT_STARTED)
   deadline    DateTime?
   comments    String?
+  typeId      String?           // Reference to user-defined action item type
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
   // Relationships
   analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  type     ActionItemType? @relation(fields: [typeId], references: [id], onDelete: SetNull)
 
   @@map("action_items")
+}
+
+model ActionItemType {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  prompt      String   // AI prompt to extract this type of action item
+  enabled     Boolean  @default(true)
+  color       String?  // Hex color for UI display
+  icon        String?  // Icon name for UI display
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actionItems ActionItem[]
+
+  @@unique([userId, name]) // Prevent duplicate names per user
+  @@map("action_item_types")
 }
 
 enum AnalysisStatus {

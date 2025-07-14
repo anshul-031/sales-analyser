@@ -861,6 +861,145 @@ export class DatabaseStorage {
       throw error;
     }
   }
+
+  // Action Item Types operations
+  static async createActionItemType(actionItemType: {
+    userId: string;
+    name: string;
+    description?: string;
+    prompt: string;
+    enabled?: boolean;
+    color?: string;
+    icon?: string;
+  }) {
+    try {
+      const newActionItemType = await prisma.actionItemType.create({
+        data: actionItemType,
+      });
+
+      Logger.info('[Database] Created action item type:', newActionItemType.id);
+      return newActionItemType;
+    } catch (error) {
+      Logger.error('[Database] Error creating action item type:', error);
+      throw error;
+    }
+  }
+
+  static async getActionItemTypesByUserId(userId: string) {
+    try {
+      const actionItemTypes = await prisma.actionItemType.findMany({
+        where: { userId },
+        orderBy: [
+          { enabled: 'desc' }, // Enabled types first
+          { name: 'asc' }
+        ],
+      });
+      return actionItemTypes;
+    } catch (error) {
+      Logger.error('[Database] Error getting action item types by user ID:', error);
+      throw error;
+    }
+  }
+
+  static async getActionItemTypeById(id: string) {
+    try {
+      const actionItemType = await prisma.actionItemType.findUnique({
+        where: { id },
+      });
+
+      return actionItemType;
+    } catch (error) {
+      Logger.error('[Database] Error getting action item type by ID:', error);
+      throw error;
+    }
+  }
+
+  static async updateActionItemType(id: string, updates: {
+    name?: string;
+    description?: string;
+    prompt?: string;
+    enabled?: boolean;
+    color?: string;
+    icon?: string;
+  }) {
+    try {
+      const updatedActionItemType = await prisma.actionItemType.update({
+        where: { id },
+        data: updates,
+      });
+
+      Logger.info('[Database] Updated action item type:', id);
+      return updatedActionItemType;
+    } catch (error) {
+      Logger.error('[Database] Error updating action item type:', error);
+      throw error;
+    }
+  }
+
+  static async deleteActionItemType(id: string) {
+    try {
+      const deletedActionItemType = await prisma.actionItemType.delete({
+        where: { id },
+      });
+      Logger.info('[Database] Deleted action item type:', id);
+      return deletedActionItemType;
+    } catch (error) {
+      Logger.error('[Database] Error deleting action item type:', error);
+      throw error;
+    }
+  }
+
+  static async getEnabledActionItemTypesByUserId(userId: string) {
+    try {
+      const actionItemTypes = await prisma.actionItemType.findMany({
+        where: { 
+          userId,
+          enabled: true
+        },
+        orderBy: [
+          { name: 'asc' }
+        ],
+      });
+      return actionItemTypes;
+    } catch (error) {
+      Logger.error('[Database] Error getting enabled action item types by user ID:', error);
+      throw error;
+    }
+  }
+
+  static async setupDefaultActionItemTypes(userId: string) {
+    try {
+      // Check if user already has action item types
+      const existingTypes = await this.getActionItemTypesByUserId(userId);
+      if (existingTypes.length > 0) {
+        Logger.info('[Database] User already has action item types:', { userId, count: existingTypes.length });
+        return existingTypes;
+      }
+
+      // Import default types
+      const { DEFAULT_ACTION_ITEM_TYPES } = await import('./default-action-item-types');
+
+      // Create default action item types for the user
+      const createdTypes = [];
+      for (const defaultType of DEFAULT_ACTION_ITEM_TYPES) {
+        const actionItemType = await this.createActionItemType({
+          userId,
+          ...defaultType
+        });
+        createdTypes.push(actionItemType);
+      }
+
+      Logger.info('[Database] Created default action item types for user:', { 
+        userId, 
+        count: createdTypes.length 
+      });
+      
+      return createdTypes;
+    } catch (error) {
+      Logger.error('[Database] Error setting up default action item types:', error);
+      throw error;
+    }
+  }
 }
 
 export default prisma;

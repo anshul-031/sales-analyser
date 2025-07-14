@@ -12,6 +12,7 @@ import {
   CompressionSettings, 
   AudioCompressor 
 } from '@/lib/audio-compression';
+import ActionItemTypeSelector from './ActionItemTypeSelector';
 
 interface FileUploadProps {
   onUploadsStart: () => void;
@@ -65,6 +66,7 @@ export default function FileUpload({
   const [compressionSettings, setCompressionSettings] = useState<keyof typeof COMPRESSION_PRESETS>('MAXIMUM');
   const [enableAudioCompression, setEnableAudioCompression] = useState(true);
   const [showCompressionSettings, setShowCompressionSettings] = useState(false);
+  const [selectedActionItemTypes, setSelectedActionItemTypes] = useState<string[]>([]);
 
   const handleParameterToggle = (id: string) => {
     setAnalysisParameters(prev =>
@@ -442,6 +444,7 @@ export default function FileUpload({
                 fileSize: fileToUpload.size,
                 userId: userId,
                 customParameters: enabledParams,
+                selectedActionItemTypes: selectedActionItemTypes,
                 originalContentType: uploadFile.file.type,
                 audioCompressionUsed,
                 originalAudioSize: audioCompressionUsed ? originalSize : undefined,
@@ -828,6 +831,15 @@ export default function FileUpload({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Action Item Types Selection */}
+      <div className="mt-8">
+        <ActionItemTypeSelector
+          userId={userId}
+          selectedTypes={selectedActionItemTypes}
+          onSelectionChange={setSelectedActionItemTypes}
+        />
       </div>
 
       {files.length > 0 && (
