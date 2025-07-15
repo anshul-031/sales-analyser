@@ -1,0 +1,51 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "github.copilot.enable": {
+      "*": true,
+      "yaml": true,
+      "plaintext": true,
+      "markdown": true,
+      "typescript": true,
+      "typescriptreact": true,
+      "javascript": true,
+      "javascriptreact": true,
+      "json": true
+    },
+    "github.copilot.advanced": {
+      "length": 3000,
+      "temperature": 0.1,
+      "top_p": 1,
+      "inlineSuggestEnable": true
+    },
+    "typescript.preferences.includePackageJsonAutoImports": "auto",
+    "typescript.suggest.autoImports": true,
+    "typescript.preferences.importModuleSpecifier": "relative",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "editor.formatOnSave": true,
+    "files.associations": {
+      "*.md": "markdown"
+    },
+    "emmet.includeLanguages": {
+      "typescriptreact": "html",
+      "javascriptreact": "html"
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "github.copilot",
+      "github.copilot-chat",
+      "ms-vscode.vscode-typescript-next",
+      "bradlc.vscode-tailwindcss",
+      "esbenp.prettier-vscode",
+      "ms-vscode.vscode-json"
+    ]
+  }
+}

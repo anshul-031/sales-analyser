@@ -13,6 +13,7 @@ A modern AI-powered call analysis application built with Next.js and Google Gemi
 - **🔄 Background Processing**: Non-blocking analysis with live status updates
 - **📥 Export Functionality**: Download detailed analysis reports
 - **📊 Analytics & Performance**: Vercel Analytics for insights and Core Web Vitals monitoring
+- **👨‍💻 GitHub Copilot Ready**: Custom instructions and templates for enhanced AI-assisted development
 
 ## 🚀 Quick Start
 
@@ -403,6 +404,41 @@ npm run lint         # Run ESLint
 - **ESLint**: Code linting and formatting
 - **Error Handling**: Comprehensive error management
 - **Logging**: Detailed operation logging
+
+### 👨‍💻 GitHub Copilot Integration
+
+This project includes comprehensive GitHub Copilot custom instructions to enhance AI-assisted development:
+
+#### Custom Instructions
+- **Project-specific guidelines**: Located in `.github/copilot-instructions.md`
+- **Architecture context**: Detailed in `.github/copilot-context.md`
+- **Code templates**: Available in `.github/copilot-templates.md`
+
+#### VS Code Configuration
+- **Optimized settings**: Enhanced Copilot settings in `.vscode/settings.json`
+- **Extension recommendations**: Essential extensions in `.vscode/extensions.json`
+- **Workspace configuration**: Project-specific setup in `sales-analyser.code-workspace`
+
+#### Features
+- **Smart code completion**: Context-aware suggestions for React, TypeScript, and Next.js
+- **API route templates**: Consistent patterns for endpoint creation
+- **Component scaffolding**: Pre-configured component structures
+- **Error handling patterns**: Standardized error management
+- **Tailwind CSS integration**: Optimized styling suggestions
+
+#### Getting Started with Copilot
+1. **Install GitHub Copilot**: Available in VS Code marketplace
+2. **Open workspace**: Use `sales-analyser.code-workspace` file
+3. **Enable extensions**: Install recommended extensions when prompted
+4. **Start coding**: Copilot will provide context-aware suggestions
+
+The custom instructions ensure Copilot understands:
+- Project architecture and patterns
+- TypeScript interfaces and types
+- Gemini AI integration patterns
+- File storage and memory management
+- React component best practices
+- API design conventions
 
 ## 📚 Advanced Usage
 
