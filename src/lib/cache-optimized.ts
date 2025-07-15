@@ -16,17 +16,22 @@ interface CacheOptions {
   maxSize?: number; // Maximum number of entries
 }
 
-class OptimizedCache<T> {
+export class OptimizedCache<T> {
   private cache = new Map<string, CacheEntry<T>>();
   private maxSize: number;
   private defaultTTL: number;
 
   constructor(options: CacheOptions = {}) {
-    this.maxSize = options.maxSize || 100;
+    this.maxSize = options.maxSize !== undefined ? options.maxSize : 100;
     this.defaultTTL = options.ttl || 5 * 60 * 1000; // 5 minutes default
   }
 
   set(key: string, data: T, ttl?: number): void {
+    // Don't cache if maxSize is 0
+    if (this.maxSize === 0) {
+      return;
+    }
+
     const now = Date.now();
     const expiresAt = now + (ttl || this.defaultTTL);
 
