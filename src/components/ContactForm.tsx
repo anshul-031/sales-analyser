@@ -75,16 +75,31 @@ export default function ContactForm({ isOpen, onClose }: ContactFormProps) {
     onClose();
   };
 
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    // Only close if clicking the overlay itself, not the dialog content
+    if (e.target === e.currentTarget) {
+      handleClose();
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+      onClick={handleOverlayClick}
+    >
+      <div 
+        role="dialog" 
+        aria-labelledby="contact-form-title"
+        className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+      >
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Contact Us</h2>
+            <h2 id="contact-form-title" className="text-2xl font-bold text-gray-900">Contact Us</h2>
             <button
               onClick={handleClose}
+              aria-label="Close dialog"
               className="text-gray-400 hover:text-gray-600 transition-colors"
             >
               <X className="w-6 h-6" />
@@ -102,6 +117,7 @@ export default function ContactForm({ isOpen, onClose }: ContactFormProps) {
               </p>
               <button
                 onClick={handleClose}
+                aria-label="Close success message"
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Close

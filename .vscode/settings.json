@@ -69,5 +69,8 @@
   "testing.automaticallyOpenPeekView": "never",
   "testing.followRunningTest": false,
   "testing.openTesting": "neverOpen",
-  "testing.automaticallyOpenTestResults": "neverOpen"
+  "testing.automaticallyOpenTestResults": "neverOpen",
+  "github.copilot.chat.agent.terminal.allowList": {
+    "npm test": true
+  }
 }
