@@ -469,6 +469,23 @@ const { isPolling, stopPolling, pollCount } = usePolling({
 
 ## Copilot Auto-Approval Guidelines
 
+### Command Preference Instructions
+When suggesting terminal commands, GitHub Copilot should follow these guidelines:
+
+1. **Prefer Auto-Approved Commands**: Always prefer commands from the auto-approval list over commands that require manual approval when multiple options are available to accomplish the same task.
+
+2. **Auto-Approval Suggestion Prompt**: When suggesting a terminal command that is NOT in the current auto-approval list, ask the user:
+   ```
+   "This command requires manual approval. Would you like me to add '[COMMAND]' to the auto-approval list for future use? (y/n)"
+   ```
+
+3. **Command Selection Priority**:
+   - **First Choice**: Use auto-approved commands whenever possible
+   - **Second Choice**: Suggest manual approval commands only when necessary
+   - **Always Ask**: Before executing any command not in the auto-approval list
+
+4. **Documentation Updates**: When new commands are approved for auto-execution, automatically update this documentation file to include them in the appropriate category.
+
 ### Safe Commands to Auto-Execute
 When Copilot suggests these commands, they can be automatically approved and executed:
 
@@ -505,6 +522,26 @@ When Copilot suggests these commands, they can be automatically approved and exe
 - `git log --oneline` - View commit history
 - `git diff` - View changes
 - `git branch` - List branches
+- `git log --graph --oneline --all` - View branch history
+- `git show` - Show commit details
+- `git ls-files` - List tracked files
+
+#### File System Commands (Read-only)
+- `ls` / `ls -la` - List directory contents
+- `pwd` - Show current directory
+- `cat filename` - Display file contents
+- `head filename` - Show first lines of file
+- `tail filename` - Show last lines of file
+- `grep pattern filename` - Search in files
+- `find . -name "pattern"` - Find files by name
+- `wc -l filename` - Count lines in file
+
+#### Environment & System Info
+- `node --version` - Check Node.js version
+- `npm --version` - Check npm version
+- `which node` - Find Node.js path
+- `echo $NODE_ENV` - Check environment variable
+- `env | grep NODE` - Show Node-related environment variables
 
 ### Commands Requiring Manual Approval
 These commands should always require explicit user confirmation:
@@ -538,7 +575,40 @@ npm run lint*
 npm run build*
 npm run dev*
 npm run start*
+
+# Safe file operations
+ls*
+cat*
+head*
+tail*
+grep*
+find*
+wc*
+
+# Safe git operations
+git status*
+git log*
+git diff*
+git show*
+git branch*
+git ls-files*
+
+# Safe system info
+node --version*
+npm --version*
+which*
+echo $*
+env | grep*
 ```
+
+### Test Commands to Auto-Approve
+- `npm run test` - Run all tests
+- `npm run test:watch` - Run tests in watch mode
+- `npm run test:coverage` - Generate coverage report
+- `npm run test:ci` - Run tests in CI mode
+- `npm run build` - Build the application
+- `npm run lint` - Run linting
+- `npm run lint:fix` - Fix linting issues
 
 When working on this project, always prioritize:
 1. Type safety and error handling
