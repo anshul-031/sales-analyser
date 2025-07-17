@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@/lib/auth';
+import { DatabaseStorage } from '@/lib/db';
 import { Logger } from '@/lib/utils';
-import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand } from '@aws-sdk/client-s3';
+import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand, S3Client, UploadPartCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
-import { DatabaseStorage } from '@/lib/db';
-import { getAuthenticatedUser } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server';
 
 const r2 = new S3Client({
   region: 'auto',
@@ -25,7 +25,13 @@ export async function POST(request: NextRequest) {
     }, { status: 401 });
   }
 
-  const params = await request.json();
+  let params;
+  try {
+    params = await request.json();
+  } catch (error) {
+    return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+  }
+  
   const { action } = params;
 
   switch (action) {
@@ -42,9 +48,33 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function startUpload({ fileName, contentType }: { fileName: string, contentType: string }, user: any) {
+async function startUpload(params: any, user: any) {
+    const { fileName, filename, contentType, mimeType, fileSize } = params;
+    const currentFilename = fileName || filename;
+    const currentContentType = contentType || mimeType;
+
+    // Validate required parameters
+    if (!currentFilename || !currentContentType || !fileSize) {
+        return NextResponse.json({ success: false, error: 'Missing required parameters: filename, mimeType, fileSize' }, { status: 400 });
+    }
+
+    // Validate file size (200MB limit)
+    const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
+    if (fileSize > MAX_FILE_SIZE) {
+        return NextResponse.json({
+            success: false,
+            error: `File size exceeds the 200MB limit. Current size: ${(fileSize / (1024 * 1024)).toFixed(2)}MB`
+        }, { status: 400 });
+    }
+
+    // Validate MIME type
+    const ALLOWED_MIME_TYPES = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/flac', 'audio/ogg'];
+    if (!ALLOWED_MIME_TYPES.includes(currentContentType)) {
+        return NextResponse.json({ success: false, error: `Invalid MIME type: ${currentContentType}` }, { status: 400 });
+    }
+
     const uploadId = randomUUID();
-    const key = `uploads/${user.id}/${uploadId}/${fileName}`;
+    const key = `uploads/${user.id}/${uploadId}/${currentFilename}`;
 
     try {
         const expires = new Date();
@@ -54,7 +84,7 @@ async function startUpload({ fileName, contentType }: { fileName: string, conten
             new CreateMultipartUploadCommand({
                 Bucket: process.env.R2_BUCKET_NAME!,
                 Key: key,
-                ContentType: contentType,
+                ContentType: currentContentType,
                 Expires: expires,
             })
         );
@@ -102,15 +132,6 @@ async function completeUpload(request: NextRequest, params: any, user: any) {
         selectedActionItemTypes,
         originalContentType 
     } = params;
-    
-    // Validate file size (200MB limit)
-    const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
-    if (fileSize > MAX_FILE_SIZE) {
-        return NextResponse.json({ 
-            success: false, 
-            error: `File size exceeds the 200MB limit. Current size: ${(fileSize / (1024 * 1024)).toFixed(2)}MB` 
-        }, { status: 400 });
-    }
     
     const startTime = Date.now();
     try {

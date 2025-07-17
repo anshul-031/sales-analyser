@@ -39,13 +39,18 @@ export default function ForgotPasswordForm() {
     setError('');
     setSuccess('');
 
-    const result = await forgotPassword(email);
-    
-    if (result.success) {
-      setSuccess(result.message || 'Password reset email sent!');
-      setEmail('');
-    } else {
-      setError(result.message || 'Failed to send reset email');
+    try {
+      const result = await forgotPassword(email);
+      
+      if (result.success) {
+        setSuccess(result.message || 'Password reset email sent!');
+        setEmail('');
+      } else {
+        setError(result.message || 'Failed to send reset email');
+      }
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      setError('Failed to send reset email');
     }
     
     setIsLoading(false);

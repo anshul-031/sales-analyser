@@ -70,15 +70,20 @@ function ResetPasswordFormContent() {
       return;
     }
 
-    const result = await resetPassword(token, password);
-    
-    if (result.success) {
-      setSuccess(result.message || 'Password reset successful!');
-      setTimeout(() => {
-        router.push('/login');
-      }, 3000);
-    } else {
-      setError(result.message || 'Failed to reset password');
+    try {
+      const result = await resetPassword(token, password);
+      
+      if (result.success) {
+        setSuccess(result.message || 'Password reset successful!');
+        setTimeout(() => {
+          router.push('/login');
+        }, 3000);
+      } else {
+        setError(result.message || 'Failed to reset password');
+      }
+    } catch (error) {
+      console.error('Reset password error:', error);
+      setError('Failed to reset password');
     }
     
     setIsLoading(false);

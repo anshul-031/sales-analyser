@@ -1,194 +1,437 @@
-// Tests for LoginForm component structure
-import { render, screen } from '@testing-library/react'
-import '@testing-library/jest-dom'
+import React from 'react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import LoginForm from '../LoginForm';
 
-// Mock Next.js navigation
+// Mock fetch globally
+global.fetch = jest.fn();
+
+// Mock Next.js navigation hooks
+const mockPush = jest.fn();
+const mockSearchParams = new URLSearchParams();
+
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: jest.fn(),
+    push: mockPush,
     back: jest.fn(),
     forward: jest.fn(),
     refresh: jest.fn(),
     replace: jest.fn(),
   }),
-}))
+  useSearchParams: () => mockSearchParams,
+}));
 
 // Mock the auth context
+const mockLogin = jest.fn();
+const mockAuthContext = {
+  user: null as any,
+  loading: false,
+  login: mockLogin,
+  logout: jest.fn(),
+  register: jest.fn(),
+  forgotPassword: jest.fn(),
+  resetPassword: jest.fn(),
+};
+
 jest.mock('../../lib/auth-context', () => ({
-  useAuth: () => ({
-    user: null,
-    loading: false,
-    login: jest.fn(),
-    logout: jest.fn(),
-    register: jest.fn(),
-  }),
-}))
+  useAuth: () => mockAuthContext,
+}));
 
-describe('LoginForm Component Structure', () => {
-  it('should define form field structure', () => {
-    const formFields = [
-      {
-        name: 'email',
-        type: 'email',
-        required: true,
-        label: 'Email address',
-      },
-      {
-        name: 'password',
-        type: 'password',
-        required: true,
-        label: 'Password',
-      },
-    ]
-    
-    formFields.forEach(field => {
-      expect(field.name).toBeDefined()
-      expect(field.type).toBeDefined()
-      expect(field.required).toBe(true)
-      expect(field.label).toBeDefined()
-    })
-  })
+// Mock Logo component
+jest.mock('../Logo', () => {
+  return function MockLogo({ size }: { size?: string }) {
+    return <div data-testid="logo">Logo {size}</div>;
+  };
+});
 
-  it('should define validation rules', () => {
-    const validationRules = {
-      email: {
-        required: 'Email is required',
-        pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-        message: 'Please enter a valid email address',
-      },
-      password: {
-        required: 'Password is required',
-        minLength: 8,
-        message: 'Password must be at least 8 characters long',
-      },
-    }
-    
-    expect(validationRules.email.required).toBeDefined()
-    expect(validationRules.email.pattern).toBeInstanceOf(RegExp)
-    expect(validationRules.password.minLength).toBe(8)
-  })
+beforeEach(() => {
+  jest.clearAllMocks();
+  
+  // Reset auth context to default state
+  mockAuthContext.user = null;
+  mockAuthContext.loading = false;
+  
+  // Reset search params
+  mockSearchParams.delete('verified');
+  mockSearchParams.delete('redirect');
+  
+  // Clear fetch mock
+  (fetch as jest.Mock).mockClear();
+});
 
-  it('should define form submission behavior', () => {
-    const submissionConfig = {
-      method: 'POST',
-      endpoint: '/api/auth/login',
-      loadingState: true,
-      successRedirect: '/upload',
-      errorHandling: true,
-    }
+describe('LoginForm', () => {
+  it('renders login form with all elements', () => {
+    render(<LoginForm />);
     
-    expect(submissionConfig.method).toBe('POST')
-    expect(submissionConfig.endpoint).toBe('/api/auth/login')
-    expect(submissionConfig.loadingState).toBe(true)
-    expect(submissionConfig.successRedirect).toBe('/upload')
-  })
+    expect(screen.getByTestId('logo')).toBeInTheDocument();
+    expect(screen.getByText('Sign in to your account')).toBeInTheDocument();
+    expect(screen.getByText('create a new account')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Password')).toBeInTheDocument();
+    expect(screen.getByText('Forgot your password?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+  });
 
-  it('should handle form states', () => {
-    const formStates = {
-      idle: {
-        submitDisabled: false,
-        showLoading: false,
-        showError: false,
-      },
-      submitting: {
-        submitDisabled: true,
-        showLoading: true,
-        showError: false,
-      },
-      error: {
-        submitDisabled: false,
-        showLoading: false,
-        showError: true,
-      },
-      success: {
-        submitDisabled: false,
-        showLoading: false,
-        showError: false,
-      },
-    }
+  it('shows loading state when auth context is loading', () => {
+    mockAuthContext.loading = true;
     
-    expect(formStates.idle.submitDisabled).toBe(false)
-    expect(formStates.submitting.showLoading).toBe(true)
-    expect(formStates.error.showError).toBe(true)
-  })
+    render(<LoginForm />);
+    
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+  });
 
-  it('should define error messages', () => {
-    const errorMessages = {
-      invalidCredentials: 'Invalid email or password',
-      networkError: 'Network error. Please try again.',
-      serverError: 'Server error. Please try again later.',
-      emailNotVerified: 'Please verify your email address first.',
-    }
+  it('redirects authenticated users', async () => {
+    mockAuthContext.user = { id: '1', email: 'test@test.com' };
     
-    Object.values(errorMessages).forEach(message => {
-      expect(typeof message).toBe('string')
-      expect(message.length).toBeGreaterThan(0)
-    })
-  })
+    render(<LoginForm />);
+    
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/');
+    });
+  });
 
-  it('should define accessibility features', () => {
-    const accessibilityFeatures = {
-      form: {
-        role: 'form',
-        ariaLabel: 'Login form',
-      },
-      fields: {
-        ariaRequired: true,
-        ariaInvalid: false,
-        ariaDescribedBy: 'field-error',
-      },
-      submitButton: {
-        ariaLabel: 'Sign in to your account',
-        ariaDisabled: false,
-      },
-    }
+  it('shows email verification success message', () => {
+    mockSearchParams.set('verified', 'true');
     
-    expect(accessibilityFeatures.form.role).toBe('form')
-    expect(accessibilityFeatures.fields.ariaRequired).toBe(true)
-    expect(accessibilityFeatures.submitButton.ariaLabel).toBeDefined()
-  })
+    render(<LoginForm />);
+    
+    expect(screen.getByText('Email verified successfully! You can now log in.')).toBeInTheDocument();
+  });
 
-  it('should define social login options', () => {
-    const socialProviders = [
-      {
-        name: 'Google',
-        icon: 'google',
-        enabled: false, // Assuming not implemented yet
-      },
-      {
-        name: 'GitHub',
-        icon: 'github',
-        enabled: false, // Assuming not implemented yet
-      },
-    ]
+  it('allows user to toggle password visibility', async () => {
+    const user = userEvent.setup();
+    render(<LoginForm />);
     
-    socialProviders.forEach(provider => {
-      expect(provider.name).toBeDefined()
-      expect(provider.icon).toBeDefined()
-      expect(typeof provider.enabled).toBe('boolean')
-    })
-  })
+    const passwordInput = screen.getByPlaceholderText('Password');
+    const toggleButton = screen.getByRole('button', { name: '' }); // Password toggle button
+    
+    expect(passwordInput).toHaveAttribute('type', 'password');
+    
+    await user.click(toggleButton);
+    expect(passwordInput).toHaveAttribute('type', 'text');
+    
+    await user.click(toggleButton);
+    expect(passwordInput).toHaveAttribute('type', 'password');
+  });
 
-  it('should define navigation links', () => {
-    const navigationLinks = {
-      register: {
-        text: "Don't have an account? Sign up",
-        href: '/register',
-      },
-      forgotPassword: {
-        text: 'Forgot your password?',
-        href: '/forgot-password',
-      },
-      home: {
-        text: 'Back to home',
-        href: '/',
-      },
-    }
+  it('handles successful login', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockResolvedValue({ success: true });
     
-    Object.values(navigationLinks).forEach(link => {
-      expect(link.text).toBeDefined()
-      expect(link.href).toBeDefined()
-      expect(link.href).toMatch(/^\//)
-    })
-  })
-})
+    render(<LoginForm />);
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+    
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    
+    await user.click(submitButton);
+    
+    expect(mockLogin).toHaveBeenCalledWith('test@example.com', 'password123');
+    
+    await waitFor(() => {
+      expect(screen.getByText('Login successful! Redirecting...')).toBeInTheDocument();
+    });
+  });
+
+  it('handles login failure with generic error', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockResolvedValue({ success: false, message: 'Invalid credentials' });
+    
+    render(<LoginForm />);
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+    
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'wrongpassword');
+    
+    await user.click(submitButton);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Invalid credentials')).toBeInTheDocument();
+    });
+  });
+
+  it('handles email verification needed error', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockResolvedValue({ 
+      success: false, 
+      message: 'Please verify your email address first.' 
+    });
+    
+    render(<LoginForm />);
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+    
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    
+    await user.click(submitButton);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Please verify your email address first.')).toBeInTheDocument();
+      expect(screen.getByText('Resend Verification Email')).toBeInTheDocument();
+    });
+  });
+
+  it('handles resend verification email successfully', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockResolvedValue({ 
+      success: false, 
+      message: 'Please verify your email address first.' 
+    });
+    
+    (fetch as jest.Mock).mockResolvedValue({
+      json: () => Promise.resolve({ success: true })
+    });
+    
+    render(<LoginForm />);
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+    
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    await user.click(submitButton);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Resend Verification Email')).toBeInTheDocument();
+    });
+    
+    const resendButton = screen.getByText('Resend Verification Email');
+    await user.click(resendButton);
+    
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'test@example.com' })
+      });
+      expect(screen.getByText('Verification email sent! Please check your inbox and spam folder.')).toBeInTheDocument();
+    });
+  });
+
+  it('handles resend verification email failure', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockResolvedValue({ 
+      success: false, 
+      message: 'Please verify your email address first.' 
+    });
+    
+    (fetch as jest.Mock).mockResolvedValue({
+      json: () => Promise.resolve({ success: false, message: 'Failed to send email' })
+    });
+    
+    render(<LoginForm />);
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    
+    await waitFor(() => {
+      expect(screen.getByText('Resend Verification Email')).toBeInTheDocument();
+    });
+    
+    await user.click(screen.getByText('Resend Verification Email'));
+    
+    await waitFor(() => {
+      expect(screen.getByText('Failed to send email')).toBeInTheDocument();
+    });
+  });
+
+  it('handles resend verification without email', async () => {
+    const user = userEvent.setup();
+    
+    render(<LoginForm />);
+    
+    // First trigger the verification needed state by attempting login with verification error
+    mockLogin.mockResolvedValue({ 
+      success: false, 
+      message: 'Please verify your email address first.' 
+    });
+    
+    // Fill in both email and password for initial login attempt
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    
+    await waitFor(() => {
+      expect(screen.getByText('Please verify your email address first.')).toBeInTheDocument();
+      expect(screen.getByText('Resend Verification Email')).toBeInTheDocument();
+    });
+    
+    // Clear email field
+    await user.clear(emailInput);
+    
+    await user.click(screen.getByText('Resend Verification Email'));
+    
+    await waitFor(() => {
+      expect(screen.getByText('Please enter your email address first.')).toBeInTheDocument();
+    });
+  });
+
+  it('handles network error during resend verification', async () => {
+    const user = userEvent.setup();
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    
+    (fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
+    
+    render(<LoginForm />);
+    
+    // First trigger the verification needed state by attempting login with verification error
+    mockLogin.mockResolvedValue({ 
+      success: false, 
+      message: 'Please verify your email address first.' 
+    });
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    
+    await waitFor(() => {
+      expect(screen.getByText('Please verify your email address first.')).toBeInTheDocument();
+      expect(screen.getByText('Resend Verification Email')).toBeInTheDocument();
+    });
+    
+    await user.click(screen.getByText('Resend Verification Email'));
+    
+    await waitFor(() => {
+      expect(screen.getByText('An error occurred while sending the verification email.')).toBeInTheDocument();
+    });
+    
+    consoleSpy.mockRestore();
+  });
+
+  it('handles login network error', async () => {
+    const user = userEvent.setup();
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    
+    mockLogin.mockRejectedValue(new Error('Network error'));
+    
+    render(<LoginForm />);
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    
+    await waitFor(() => {
+      expect(screen.getByText('An unexpected error occurred. Please try again.')).toBeInTheDocument();
+    });
+    
+    consoleSpy.mockRestore();
+  });
+
+  it('prevents multiple form submissions', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockImplementation(() => new Promise(() => {})); // Never resolves
+    
+    render(<LoginForm />);
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+    
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    
+    // First click
+    await user.click(submitButton);
+    expect(mockLogin).toHaveBeenCalledTimes(1);
+    
+    // Second click should be prevented
+    await user.click(submitButton);
+    expect(mockLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables form inputs during loading', async () => {
+    const user = userEvent.setup();
+    mockLogin.mockImplementation(() => new Promise(() => {})); // Never resolves
+    
+    render(<LoginForm />);
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    const submitButton = screen.getByRole('button', { name: 'Sign in' });
+    
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    await user.click(submitButton);
+    
+    await waitFor(() => {
+      expect(emailInput).toBeDisabled();
+      expect(passwordInput).toBeDisabled();
+      expect(submitButton).toBeDisabled();
+      expect(screen.getByText('Signing in...')).toBeInTheDocument();
+    });
+  });
+
+  it('shows loading state during resend verification', async () => {
+    const user = userEvent.setup();
+    
+    (fetch as jest.Mock).mockImplementation(() => new Promise(() => {})); // Never resolves
+    
+    render(<LoginForm />);
+    
+    // First trigger the verification needed state by attempting login with verification error
+    mockLogin.mockResolvedValue({ 
+      success: false, 
+      message: 'Please verify your email address first.' 
+    });
+    
+    const emailInput = screen.getByPlaceholderText('Email address');
+    const passwordInput = screen.getByPlaceholderText('Password');
+    await user.type(emailInput, 'test@example.com');
+    await user.type(passwordInput, 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    
+    await waitFor(() => {
+      expect(screen.getByText('Please verify your email address first.')).toBeInTheDocument();
+      expect(screen.getByText('Resend Verification Email')).toBeInTheDocument();
+    });
+    
+    await user.click(screen.getByText('Resend Verification Email'));
+    
+    await waitFor(() => {
+      expect(screen.getByText('Sending...')).toBeInTheDocument();
+    });
+  });
+
+  it('has correct navigation links', () => {
+    render(<LoginForm />);
+    
+    const registerLink = screen.getByText('create a new account');
+    const forgotPasswordLink = screen.getByText('Forgot your password?');
+    
+    expect(registerLink.closest('a')).toHaveAttribute('href', '/register');
+    expect(forgotPasswordLink.closest('a')).toHaveAttribute('href', '/forgot-password');
+  });
+
+  it('handles custom redirect parameter', async () => {
+    mockSearchParams.set('redirect', '/custom-page');
+    mockAuthContext.user = { id: '1', email: 'test@test.com' };
+    
+    render(<LoginForm />);
+    
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/custom-page');
+    });
+  });
+});
