@@ -860,27 +860,50 @@ export default function CallHistoryPage() {
             </div>
           ) : (
             <ul>
-              {callRecordings.map(rec => (
-                <li
-                  key={rec.id}
-                  onClick={() => handleRecordingSelect(rec)}
-                  className={`p-4 cursor-pointer border-b border-gray-200 ${selectedRecording?.id === rec.id ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
-                >
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="flex-grow min-w-0">
-                      <h3 className="font-semibold text-sm text-gray-900 truncate">{rec.originalName}</h3>
-                      <p className="text-xs text-gray-500">{formatFileSize(rec.fileSize)} - {new Date(rec.uploadedAt).toLocaleDateString()}</p>
+              {callRecordings.map(rec => {
+                const analysis = rec.analyses && rec.analyses.length > 0 ? rec.analyses[0] : null;
+                const statusDisplay = analysis ? getAnalysisStatusDisplayName(analysis.status) : 'No Analysis';
+                const isCompleted = analysis ? isAnalysisCompleted(analysis.status) : false;
+                const isFailed = analysis ? isAnalysisFailed(analysis.status) : false;
+                const isProcessing = analysis ? isAnalysisProcessing(analysis.status) : false;
+
+                return (
+                  <li
+                    key={rec.id}
+                    onClick={() => handleRecordingSelect(rec)}
+                    className={`p-4 cursor-pointer border-b border-gray-200 ${selectedRecording?.id === rec.id ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
+                  >
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="flex-grow min-w-0">
+                        <h3 className="font-semibold text-sm text-gray-900 truncate">{rec.originalName}</h3>
+                        <p className="text-xs text-gray-500">{formatFileSize(rec.fileSize)} - {new Date(rec.uploadedAt).toLocaleDateString()}</p>
+                        {analysis && (
+                          <div className="mt-1">
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              isCompleted ? 'bg-green-100 text-green-800' :
+                              isFailed ? 'bg-red-100 text-red-800' :
+                              isProcessing ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {isProcessing && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                              {isCompleted && <CheckCircle className="w-3 h-3 mr-1" />}
+                              {isFailed && <XCircle className="w-3 h-3 mr-1" />}
+                              {statusDisplay}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(rec.id); }} 
+                        className="text-gray-400 hover:text-red-600 flex-shrink-0 p-1 rounded hover:bg-gray-100 transition-colors"
+                        title="Delete recording"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleDelete(rec.id); }} 
-                      className="text-gray-400 hover:text-red-600 flex-shrink-0 p-1 rounded hover:bg-gray-100 transition-colors"
-                      title="Delete recording"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
