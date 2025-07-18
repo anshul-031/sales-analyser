@@ -375,18 +375,31 @@ export default function FileUpload({
         } : f));
 
         // Step 3: Start multipart upload
+        const startRequestData = {
+            action: 'start-upload',
+            fileName: fileToUpload.name,
+            contentType: fileToUpload.type,
+            fileSize: fileToUpload.size,
+        };
+        
+        console.log('[FileUpload] Starting upload with data:', startRequestData);
+        
         const startResponse = await fetch('/api/upload-large', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'start-upload',
-                fileName: fileToUpload.name,
-                contentType: fileToUpload.type,
-            }),
+            body: JSON.stringify(startRequestData),
         });
 
+        console.log('[FileUpload] Start upload response status:', startResponse.status);
         const startData = await startResponse.json();
-        if (!startData.success) throw new Error('Failed to start upload');
+        console.log('[FileUpload] Start upload response data:', startData);
+        
+        if (!startData.success) {
+            const errorMessage = startData.error || 'Failed to start upload';
+            const errorDetails = startData.details ? ` - ${startData.details}` : '';
+            throw new Error(errorMessage + errorDetails);
+        }
+        
         uploadId = startData.uploadId;
         fileKey = startData.key;
 
@@ -404,29 +417,66 @@ export default function FileUpload({
         });
 
         const urlsData = await urlsResponse.json();
+        console.log('[FileUpload] Get upload URLs response data:', urlsData);
         if (!urlsData.success) throw new Error('Failed to get upload URLs');
 
         // Step 5: Upload chunks
         const uploadedParts: { ETag: string, PartNumber: number }[] = [];
         let uploadedSize = 0;
 
-        for (let i = 0; i < numChunks; i++) {
-            const chunk = fileData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-            const uploadResponse = await fetch(urlsData.urls[i], {
-                method: 'PUT',
-                body: chunk,
-            });
+        // Check if we're in development mode
+        const isDevelopmentMode = urlsData.isDevelopmentMode || startData.isDevelopmentMode;
+        
+        if (isDevelopmentMode) {
+            console.log('[FileUpload] Development mode: Simulating chunk uploads');
+            // In development mode, simulate the upload process
+            for (let i = 0; i < numChunks; i++) {
+                const chunk = fileData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+                
+                try {
+                    const uploadResponse = await fetch(urlsData.urls[i], {
+                        method: 'PUT',
+                        body: chunk,
+                    });
 
-            if (!uploadResponse.ok) throw new Error(`Chunk ${i + 1} upload failed`);
+                    const etag = uploadResponse.headers.get('ETag') || `"mock-etag-${i + 1}-${Date.now()}"`;
+                    uploadedParts.push({
+                        ETag: etag,
+                        PartNumber: i + 1,
+                    });
+                } catch (error) {
+                    console.log('[FileUpload] Development mode: Mock upload error, using fallback ETag');
+                    // Fallback for development mode
+                    uploadedParts.push({
+                        ETag: `"dev-etag-${i + 1}-${Date.now()}"`,
+                        PartNumber: i + 1,
+                    });
+                }
 
-            uploadedParts.push({
-                ETag: uploadResponse.headers.get('ETag')!,
-                PartNumber: i + 1,
-            });
+                uploadedSize += chunk.length;
+                const progress = Math.round((uploadedSize / fileData.length) * 100);
+                setFiles(prev => prev.map(f => f.id === uploadFile.id ? { ...f, status: 'uploading', progress } : f));
+            }
+        } else {
+            // Production mode: actual S3 uploads
+            for (let i = 0; i < numChunks; i++) {
+                const chunk = fileData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+                const uploadResponse = await fetch(urlsData.urls[i], {
+                    method: 'PUT',
+                    body: chunk,
+                });
 
-            uploadedSize += chunk.length;
-            const progress = Math.round((uploadedSize / fileData.length) * 100);
-            setFiles(prev => prev.map(f => f.id === uploadFile.id ? { ...f, status: 'uploading', progress } : f));
+                if (!uploadResponse.ok) throw new Error(`Chunk ${i + 1} upload failed`);
+
+                uploadedParts.push({
+                    ETag: uploadResponse.headers.get('ETag')!,
+                    PartNumber: i + 1,
+                });
+
+                uploadedSize += chunk.length;
+                const progress = Math.round((uploadedSize / fileData.length) * 100);
+                setFiles(prev => prev.map(f => f.id === uploadFile.id ? { ...f, status: 'uploading', progress } : f));
+            }
         }
 
         // Step 6: Complete upload

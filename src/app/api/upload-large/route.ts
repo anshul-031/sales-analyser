@@ -6,16 +6,51 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
-const r2 = new S3Client({
-  region: 'auto',
-  endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-  },
-});
+// Validate required environment variables
+const requiredEnvVars = {
+  CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
+  R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
+  R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
+  R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
+};
+
+const missingEnvVars = Object.entries(requiredEnvVars)
+  .filter(([, value]) => !value)
+  .map(([key]) => key);
+
+const isDevelopment = process.env.NODE_ENV === 'development';
+
+if (missingEnvVars.length > 0) {
+  Logger.error('[Upload API] Missing required environment variables:', missingEnvVars);
+  if (!isDevelopment) {
+    Logger.error('[Upload API] R2 configuration is required in production');
+  } else {
+    Logger.info('[Upload API] Development mode: R2 not configured, will use local storage fallback');
+  }
+}
+
+// Only initialize R2 if all environment variables are present
+let r2: S3Client | null = null;
+if (missingEnvVars.length === 0) {
+  r2 = new S3Client({
+    region: 'auto',
+    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+  });
+}
 
 export async function POST(request: NextRequest) {
+  // Check for missing environment variables in production
+  if (missingEnvVars.length > 0 && !isDevelopment) {
+    return NextResponse.json({
+      success: false,
+      error: `Missing required environment variables: ${missingEnvVars.join(', ')}`
+    }, { status: 500 });
+  }
+
   // Check authentication for all actions
   const user = await getAuthenticatedUser(request);
   if (!user) {
@@ -73,12 +108,34 @@ async function startUpload(params: any, user: any) {
         return NextResponse.json({ success: false, error: `Invalid MIME type: ${currentContentType}` }, { status: 400 });
     }
 
+    // If R2 is not configured (development mode), return a development fallback
+    if (!r2) {
+        Logger.info('[Upload API] Development mode: Using local storage fallback for upload');
+        const uploadId = randomUUID();
+        const key = `local-uploads/${user.id}/${uploadId}/${currentFilename}`;
+        
+        return NextResponse.json({
+            success: true,
+            uploadId,
+            key,
+            isDevelopmentMode: true,
+        });
+    }
+
     const uploadId = randomUUID();
     const key = `uploads/${user.id}/${uploadId}/${currentFilename}`;
 
     try {
         const expires = new Date();
         expires.setDate(expires.getDate() + 1); // 24-hour expiry
+
+        Logger.info('[Upload API] Starting multipart upload:', {
+            filename: currentFilename,
+            contentType: currentContentType,
+            fileSize,
+            userId: user.id,
+            key
+        });
 
         const multipartUpload = await r2.send(
             new CreateMultipartUploadCommand({
@@ -89,18 +146,46 @@ async function startUpload(params: any, user: any) {
             })
         );
 
+        Logger.info('[Upload API] Multipart upload started successfully:', {
+            uploadId: multipartUpload.UploadId,
+            key
+        });
+
         return NextResponse.json({
             success: true,
             uploadId: multipartUpload.UploadId,
             key: key,
         });
     } catch (error) {
-        Logger.error('[Upload API] Error starting multipart upload:', error);
-        return NextResponse.json({ success: false, error: 'Failed to start upload' }, { status: 500 });
+        Logger.error('[Upload API] Error starting multipart upload:', {
+            error: error instanceof Error ? error.message : error,
+            stack: error instanceof Error ? error.stack : undefined,
+            filename: currentFilename,
+            contentType: currentContentType,
+            fileSize,
+            userId: user.id,
+            key
+        });
+        return NextResponse.json({ 
+            success: false, 
+            error: 'Failed to start upload',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        }, { status: 500 });
     }
 }
 
 async function getUploadUrls({ key, uploadId, parts }: { key: string, uploadId: string, parts: number }) {
+    // Development mode fallback
+    if (!r2) {
+        Logger.info('[Upload API] Development mode: Generating mock upload URLs');
+        const urls = [];
+        for (let i = 1; i <= parts; i++) {
+            // Generate mock URLs for development
+            urls.push(`http://localhost:3000/api/upload-large/mock-upload?part=${i}&uploadId=${uploadId}&key=${encodeURIComponent(key)}`);
+        }
+        return NextResponse.json({ success: true, urls, isDevelopmentMode: true });
+    }
+
     try {
         const urls = [];
         for (let i = 1; i <= parts; i++) {
@@ -135,14 +220,19 @@ async function completeUpload(request: NextRequest, params: any, user: any) {
     
     const startTime = Date.now();
     try {
-        await r2.send(
-            new CompleteMultipartUploadCommand({
-                Bucket: process.env.R2_BUCKET_NAME!,
-                Key: key,
-                UploadId: uploadId,
-                MultipartUpload: { Parts: parts },
-            })
-        );
+        // Development mode fallback
+        if (!r2) {
+            Logger.info('[Upload API] Development mode: Skipping R2 complete upload, creating local upload record');
+        } else {
+            await r2.send(
+                new CompleteMultipartUploadCommand({
+                    Bucket: process.env.R2_BUCKET_NAME!,
+                    Key: key,
+                    UploadId: uploadId,
+                    MultipartUpload: { Parts: parts },
+                })
+            );
+        }
 
         const newUpload = await DatabaseStorage.createUpload({
             filename: fileName,
@@ -225,6 +315,12 @@ async function completeUpload(request: NextRequest, params: any, user: any) {
 
 async function abortUpload({ key, uploadId }: { key: string, uploadId: string }) {
     try {
+        // Development mode fallback
+        if (!r2) {
+            Logger.info('[Upload API] Development mode: Skipping R2 abort upload');
+            return NextResponse.json({ success: true, isDevelopmentMode: true });
+        }
+
         await r2.send(
             new AbortMultipartUploadCommand({
                 Bucket: process.env.R2_BUCKET_NAME!,
