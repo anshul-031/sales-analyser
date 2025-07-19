@@ -27,25 +27,27 @@ prisma.$use(async (params, next) => {
   const modelName = params.model || 'Unknown';
   const action = params.action;
   
-  Logger.debug(`[Database] Starting ${action} operation on ${modelName}`);
+  Logger.database(`Starting ${action} operation on ${modelName}`);
   
   try {
     const result = await next(params);
     const duration = Date.now() - start;
     
-    Logger.info(`[Database] Completed ${action} on ${modelName} in ${duration}ms`);
+    Logger.database(`Completed ${action} on ${modelName} in ${duration}ms`);
     
-    // Log specific operations
-    if (action === 'create') {
-      Logger.info(`[Database] Created ${modelName}:`, result?.id || 'N/A');
-    } else if (action === 'update') {
-      Logger.info(`[Database] Updated ${modelName}:`, result?.id || 'N/A');
-    } else if (action === 'delete') {
-      Logger.info(`[Database] Deleted ${modelName}:`, result?.id || 'N/A');
-    } else if (action === 'findMany') {
-      Logger.info(`[Database] Found ${Array.isArray(result) ? result.length : 'unknown'} ${modelName} records`);
-    } else if (action === 'findUnique' || action === 'findFirst') {
-      Logger.info(`[Database] Found ${modelName}:`, result?.id || (result ? 'record found' : 'not found'));
+    // Log specific operations (only in debug mode)
+    if (process.env.LOG_LEVEL === 'debug') {
+      if (action === 'create') {
+        Logger.database(`Created ${modelName}: ${result?.id || 'N/A'}`);
+      } else if (action === 'update') {
+        Logger.database(`Updated ${modelName}: ${result?.id || 'N/A'}`);
+      } else if (action === 'delete') {
+        Logger.database(`Deleted ${modelName}: ${result?.id || 'N/A'}`);
+      } else if (action === 'findMany') {
+        Logger.database(`Found ${Array.isArray(result) ? result.length : 'unknown'} ${modelName} records`);
+      } else if (action === 'findUnique' || action === 'findFirst') {
+        Logger.database(`Found ${modelName}: ${result?.id || (result ? 'record found' : 'not found')}`);
+      }
     }
     
     return result;
@@ -100,7 +102,7 @@ export class DatabaseStorage {
         throw new Error('User not found. Please register first.');
       }
       
-      Logger.info('[Database] Found user:', userId);
+      Logger.database(`Found user: ${userId}`);
       return user;
     } catch (error) {
       Logger.error('[Database] Error finding user:', error);
@@ -549,6 +551,7 @@ export class DatabaseStorage {
     status?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
     deadline?: Date;
     comments?: string;
+    typeId?: string | null;
   }>) {
     try {
       const actionItemsWithDefaults = actionItems.map(item => ({

@@ -109,30 +109,30 @@ const withGeminiTimeout = <T>(
   );
 };
 
-// Add heartbeat logging for long-running operations
-const createHeartbeat = (requestId: string, operationName: string, intervalMs: number = 30000) => {
+// Add heartbeat logging for long-running operations (only in debug mode)
+const createHeartbeat = (requestId: string, operationName: string, intervalMs: number = 60000) => {
   const startTime = Date.now();
   const interval = setInterval(() => {
-    const elapsed = Date.now() - startTime;
-    Logger.info(`[Analyze API] [${requestId}] ${operationName} heartbeat - elapsed: ${elapsed}ms`);
+    if (process.env.LOG_LEVEL === 'debug') {
+      const elapsed = Date.now() - startTime;
+      Logger.analysis(`[${requestId}] ${operationName} heartbeat - elapsed: ${elapsed}ms`);
+    }
   }, intervalMs);
   
   return () => clearInterval(interval);
 };
 
-// Add monitoring function to track system health
+// Add monitoring function to track system health (only in debug mode)
 const logSystemHealth = (requestId: string) => {
-  Logger.info(`[Analyze API] [${requestId}] System Health Check:`, {
-    timestamp: new Date().toISOString(),
-    nodeVersion: process.version,
-    memoryUsage: process.memoryUsage(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV,
-    r2BucketName: process.env.R2_BUCKET_NAME ? 'configured' : 'missing',
-    hasApiKeys: process.env.GOOGLE_GEMINI_API_KEYS ? 'configured' : 'missing',
-    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite-preview-06-17',
-    autoDeleteFiles: process.env.AUTO_DELETE_FILES || 'undefined'
-  });
+  if (process.env.LOG_LEVEL === 'debug') {
+    Logger.analysis(`[${requestId}] System Health Check`, {
+      environment: process.env.NODE_ENV,
+      r2BucketName: process.env.R2_BUCKET_NAME ? 'configured' : 'missing',
+      hasApiKeys: process.env.GOOGLE_GEMINI_API_KEYS ? 'configured' : 'missing',
+      geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite-preview-06-17',
+      autoDeleteFiles: process.env.AUTO_DELETE_FILES || 'undefined'
+    });
+  }
 };
 
 // Get timeout values from environment or use defaults
@@ -155,16 +155,10 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
-    Logger.info(`[Analyze API] [${requestId}] User authenticated:`, user.id);
+    Logger.analysis(`[${requestId}] User authenticated: ${user.id}`);
 
     const { uploadIds, analysisType, customPrompt, customParameters, selectedActionItemTypes } = await request.json();
-    Logger.info(`[Analyze API] [${requestId}] Request payload:`, {
-      uploadIds: uploadIds?.length || 0,
-      analysisType,
-      hasCustomPrompt: !!customPrompt,
-      customParametersCount: customParameters?.length || 0,
-      selectedActionItemTypesCount: selectedActionItemTypes?.length || 0
-    });
+    Logger.analysis(`[${requestId}] Request payload: ${uploadIds?.length || 0} uploads, type: ${analysisType}`);
 
     if (!uploadIds || !Array.isArray(uploadIds) || uploadIds.length === 0) {
       Logger.warn(`[Analyze API] [${requestId}] Invalid upload IDs provided:`, uploadIds);
@@ -869,21 +863,32 @@ async function extractAndStoreInsights(analysisId: string, analysisResult: any, 
     // Extract and store action items if available
     if (analysisResult.actionItems && Array.isArray(analysisResult.actionItems)) {
       try {
-        const actionItemsToCreate = analysisResult.actionItems.map((item: any) => ({
-          analysisId,
-          title: item.title || item.action || item.task || item.description || 'Action Item',
-          description: item.description || item.details || item.context || '',
-          priority: (item.priority && ['LOW', 'MEDIUM', 'HIGH'].includes(item.priority.toUpperCase())) 
-            ? item.priority.toUpperCase() 
-            : 'MEDIUM',
-          deadline: item.deadline ? new Date(item.deadline) : new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
-          comments: item.comments || item.notes || '',
-          typeId: item.typeId || null, // Include typeId if provided by AI
-        }));
+        // First, get the analysis to extract userId
+        const analysis = await DatabaseStorage.getAnalysisById(analysisId, { includeUser: true, includeUpload: false, includeInsights: false, includeCallMetrics: false });
+        
+        if (analysis && analysis.userId) {
+          // Get valid action item type IDs from the database
+          const validActionItemTypes = await DatabaseStorage.getActionItemTypesByUserId(analysis.userId);
+          const validTypeIds = new Set(validActionItemTypes.map(type => type.id));
 
-        if (actionItemsToCreate.length > 0) {
-          await DatabaseStorage.createMultipleActionItems(actionItemsToCreate);
-          Logger.info(`[Analyze API] [${requestId}] Stored ${actionItemsToCreate.length} action items for analysis:`, analysisId);
+          const actionItemsToCreate = analysisResult.actionItems.map((item: any) => ({
+            analysisId,
+            title: item.title || item.action || item.task || item.description || 'Action Item',
+            description: item.description || item.details || item.context || '',
+            priority: (item.priority && ['LOW', 'MEDIUM', 'HIGH'].includes(item.priority.toUpperCase())) 
+              ? item.priority.toUpperCase() 
+              : 'MEDIUM',
+            deadline: item.deadline ? new Date(item.deadline) : new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
+            comments: item.comments || item.notes || '',
+            typeId: item.typeId && validTypeIds.has(String(item.typeId)) ? String(item.typeId) : null, // Only use valid typeId
+          }));
+
+          if (actionItemsToCreate.length > 0) {
+            await DatabaseStorage.createMultipleActionItems(actionItemsToCreate);
+            Logger.info(`[Analyze API] [${requestId}] Stored ${actionItemsToCreate.length} action items for analysis:`, analysisId);
+          }
+        } else {
+          Logger.warn(`[Analyze API] [${requestId}] Could not find analysis or userId for action items:`, analysisId);
         }
       } catch (actionItemError) {
         Logger.error(`[Analyze API] [${requestId}] Error storing action items:`, actionItemError);
@@ -893,48 +898,59 @@ async function extractAndStoreInsights(analysisId: string, analysisResult: any, 
     // Also extract action items from analysis result if they're in a different format
     if (analysisResult.follow_up_actions || analysisResult.next_steps || analysisResult.tasks) {
       try {
-        const actionItemsSource = analysisResult.follow_up_actions || analysisResult.next_steps || analysisResult.tasks;
-        const actionItemsToCreate: Array<{
-          analysisId: string;
-          title: string;
-          description: string;
-          priority: 'LOW' | 'MEDIUM' | 'HIGH';
-          deadline: Date;
-          comments: string;
-          typeId?: string | null;
-        }> = [];
+        // Get the analysis to extract userId for validation
+        const analysis = await DatabaseStorage.getAnalysisById(analysisId, { includeUser: true, includeUpload: false, includeInsights: false, includeCallMetrics: false });
+        
+        if (analysis && analysis.userId) {
+          // Get valid action item type IDs from the database
+          const validActionItemTypes = await DatabaseStorage.getActionItemTypesByUserId(analysis.userId);
+          const validTypeIds = new Set(validActionItemTypes.map(type => type.id));
 
-        if (Array.isArray(actionItemsSource)) {
-          actionItemsSource.forEach((item: any, index: number) => {
-            if (typeof item === 'string') {
-              actionItemsToCreate.push({
-                analysisId,
-                title: item.substring(0, 100), // Limit title length
-                description: item,
-                priority: 'MEDIUM',
-                deadline: new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
-                comments: '',
-                typeId: null, // String items don't have typeId
-              });
-            } else if (typeof item === 'object' && item !== null) {
-              actionItemsToCreate.push({
-                analysisId,
-                title: item.title || item.action || item.task || `Action Item ${index + 1}`,
-                description: item.description || item.details || item.action || '',
-                priority: (item.priority && ['LOW', 'MEDIUM', 'HIGH'].includes(item.priority.toUpperCase())) 
-                  ? item.priority.toUpperCase() 
-                  : 'MEDIUM',
-                deadline: item.deadline ? new Date(item.deadline) : new Date(Date.now() + 24 * 60 * 60 * 1000),
-                comments: item.comments || item.notes || '',
-                typeId: item.typeId || null, // Include typeId if provided
-              });
-            }
-          });
-        }
+          const actionItemsSource = analysisResult.follow_up_actions || analysisResult.next_steps || analysisResult.tasks;
+          const actionItemsToCreate: Array<{
+            analysisId: string;
+            title: string;
+            description: string;
+            priority: 'LOW' | 'MEDIUM' | 'HIGH';
+            deadline: Date;
+            comments: string;
+            typeId?: string | null;
+          }> = [];
 
-        if (actionItemsToCreate.length > 0) {
-          await DatabaseStorage.createMultipleActionItems(actionItemsToCreate);
-          Logger.info(`[Analyze API] [${requestId}] Stored ${actionItemsToCreate.length} additional action items for analysis:`, analysisId);
+          if (Array.isArray(actionItemsSource)) {
+            actionItemsSource.forEach((item: any, index: number) => {
+              if (typeof item === 'string') {
+                actionItemsToCreate.push({
+                  analysisId,
+                  title: item.substring(0, 100), // Limit title length
+                  description: item,
+                  priority: 'MEDIUM',
+                  deadline: new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
+                  comments: '',
+                  typeId: null, // String items don't have typeId
+                });
+              } else if (typeof item === 'object' && item !== null) {
+                actionItemsToCreate.push({
+                  analysisId,
+                  title: item.title || item.action || item.task || `Action Item ${index + 1}`,
+                  description: item.description || item.details || item.action || '',
+                  priority: (item.priority && ['LOW', 'MEDIUM', 'HIGH'].includes(item.priority.toUpperCase())) 
+                    ? item.priority.toUpperCase() 
+                    : 'MEDIUM',
+                  deadline: item.deadline ? new Date(item.deadline) : new Date(Date.now() + 24 * 60 * 60 * 1000),
+                  comments: item.comments || item.notes || '',
+                  typeId: item.typeId && validTypeIds.has(String(item.typeId)) ? String(item.typeId) : null, // Only use valid typeId
+                });
+              }
+            });
+          }
+
+          if (actionItemsToCreate.length > 0) {
+            await DatabaseStorage.createMultipleActionItems(actionItemsToCreate);
+            Logger.info(`[Analyze API] [${requestId}] Stored ${actionItemsToCreate.length} additional action items for analysis:`, analysisId);
+          }
+        } else {
+          Logger.warn(`[Analyze API] [${requestId}] Could not find analysis or userId for additional action items:`, analysisId);
         }
       } catch (actionItemError) {
         Logger.error(`[Analyze API] [${requestId}] Error storing additional action items:`, actionItemError);

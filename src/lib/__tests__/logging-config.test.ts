@@ -13,7 +13,7 @@ describe('LoggingConfig', () => {
   });
 
   it('should have correct default values', () => {
-    expect(LoggingConfig.logLevel).toBe('debug');
+    expect(LoggingConfig.logLevel).toBe('info');
     expect(LoggingConfig.timeouts.transcription).toBe(1800000);
     expect(LoggingConfig.timeouts.analysis).toBe(2700000);
   });

@@ -1,17 +1,15 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { useDropzone, FileRejection } from 'react-dropzone';
-import { Upload, X, FileAudio, AlertCircle, CheckCircle, Target, Edit3, Save, Plus, ChevronDown, ChevronUp, Loader2, Wind, Zap, Settings } from 'lucide-react';
-import { formatFileSize, isValidAudioFile } from '@/lib/utils';
 import { DEFAULT_ANALYSIS_PARAMETERS } from '@/lib/analysis-constants';
-import { MAX_FILE_SIZE, MAX_FILES, CHUNK_SIZE } from '@/lib/constants';
-import { 
-  audioCompressor, 
-  COMPRESSION_PRESETS, 
-  CompressionSettings, 
-  AudioCompressor 
+import {
+    audioCompressor,
+    COMPRESSION_PRESETS
 } from '@/lib/audio-compression';
+import { CHUNK_SIZE, MAX_FILE_SIZE, MAX_FILES } from '@/lib/constants';
+import { formatFileSize, isValidAudioFile } from '@/lib/utils';
+import { AlertCircle, CheckCircle, ChevronDown, ChevronUp, Edit3, FileAudio, Loader2, Plus, Save, Settings, Target, Upload, X, Zap } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { FileRejection, useDropzone } from 'react-dropzone';
 import ActionItemTypeSelector from './ActionItemTypeSelector';
 
 interface FileUploadProps {

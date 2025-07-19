@@ -76,11 +76,23 @@ export function generateUniqueFilename(originalName: string): string {
 
 // Logger utility
 export class Logger {
-  private static logLevel = (typeof process !== 'undefined' ? process.env.LOG_LEVEL : 'debug') || 'debug';
+  private static logLevel = (typeof process !== 'undefined' ? process.env.LOG_LEVEL : 'info') || 'info'; // Changed default from debug to info
   private static isProduction = (typeof process !== 'undefined' ? process.env.NODE_ENV : 'development') === 'production';
-  private static enableDatabaseLogs = true; // Always enabled for detailed monitoring
-  private static enableAnalysisDebug = true; // Always enabled for detailed monitoring
+  private static enableDatabaseLogs = false; // Disabled verbose database logs
+  private static enableAnalysisDebug = process.env.ENABLE_ANALYSIS_DEBUG === 'true'; // Only enable if explicitly set
   private static isServer = typeof process !== 'undefined' && process.stdout;
+  
+  // Test configuration methods - only for testing
+  static _testConfig = {
+    setLogLevel: (level: string) => { Logger.logLevel = level; },
+    enableDatabaseLogs: (enable: boolean) => { Logger.enableDatabaseLogs = enable; },
+    enableAnalysisDebug: (enable: boolean) => { Logger.enableAnalysisDebug = enable; },
+    reset: () => {
+      Logger.logLevel = (typeof process !== 'undefined' ? process.env.LOG_LEVEL : 'info') || 'info';
+      Logger.enableDatabaseLogs = false;
+      Logger.enableAnalysisDebug = process.env.ENABLE_ANALYSIS_DEBUG === 'true';
+    }
+  };
   
   private static shouldLog(level: string): boolean {
     const levels = ['error', 'warn', 'info', 'debug'];
@@ -146,13 +158,22 @@ export class Logger {
     }
   }
   
-  // Special methods for database and analysis logging - always enabled
+  // Special methods for database and analysis logging - controlled by settings
   static database(message: string, ...args: any[]): void {
-    this.info(`[DATABASE] ${message}`, ...args);
+    if (this.enableDatabaseLogs) {
+      this.debug(`[DATABASE] ${message}`, ...args);
+    }
   }
   
   static analysis(message: string, ...args: any[]): void {
-    this.info(`[ANALYSIS] ${message}`, ...args);
+    if (this.enableAnalysisDebug) {
+      this.debug(`[ANALYSIS] ${message}`, ...args);
+    } else {
+      // Only log errors and warnings for analysis
+      if (message.toLowerCase().includes('error') || message.toLowerCase().includes('warn')) {
+        this.warn(`[ANALYSIS] ${message}`, ...args);
+      }
+    }
   }
   
   // Enhanced logging for critical operations - always enabled
@@ -178,24 +199,29 @@ export class Logger {
     }
   }
   
-  // Method to log system health and performance
+  // Method to log system health and performance (only for slow operations)
   static performance(operation: string, duration: number, details?: any): void {
-    const message = `Performance: ${operation} completed in ${duration}ms`;
-    if (duration > 10000) { // Log slow operations as warnings
+    // Only log slow operations (>15 seconds) or if debug logging is enabled
+    if (duration > 15000) { 
+      const message = `Performance: ${operation} completed in ${duration}ms (SLOW)`;
       this.warn(message, details);
-    } else {
-      this.info(message, details);
+    } else if (this.logLevel === 'debug') {
+      const message = `Performance: ${operation} completed in ${duration}ms`;
+      this.debug(message, details);
     }
   }
   
-  // Special method for monitoring logs - always enabled
+  // Special method for monitoring logs - controlled by environment
   static monitor(message: string, ...args: any[]): void {
-    const formattedMessage = this.formatMessage('info', `[MONITOR] ${message}`);
-    console.info(formattedMessage, ...args);
-    
-    // Always write monitoring logs to stdout for visibility (server-side only)
-    if (this.isServer) {
-      process.stdout.write(formattedMessage + '\n');
+    // Only show monitoring logs in debug mode or if explicitly enabled
+    if (this.logLevel === 'debug' || process.env.ENABLE_MONITORING_LOGS === 'true') {
+      const formattedMessage = this.formatMessage('info', `[MONITOR] ${message}`);
+      console.info(formattedMessage, ...args);
+      
+      // Always write monitoring logs to stdout for visibility (server-side only)
+      if (this.isServer) {
+        process.stdout.write(formattedMessage + '\n');
+      }
     }
   }
 }

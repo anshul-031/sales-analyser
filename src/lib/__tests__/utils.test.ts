@@ -220,11 +220,12 @@ describe('Utils', () => {
 
     beforeEach(() => {
       consoleSpy = jest.spyOn(console, 'error').mockImplementation()
-      process.env.LOG_LEVEL = 'debug'
+      Logger._testConfig.setLogLevel('debug'); // Set debug level for testing
     })
 
     afterEach(() => {
       consoleSpy.mockRestore()
+      Logger._testConfig.reset(); // Reset to default state
     })
 
     it('should log error messages', () => {
@@ -773,7 +774,7 @@ describe('Utils', () => {
     });
   });
 
-  describe('Logger - Advanced Features', () => {
+    describe('Logger - Advanced Features', () => {
     let consoleSpies: { [key: string]: jest.SpyInstance };
 
     beforeEach(() => {
@@ -783,10 +784,16 @@ describe('Utils', () => {
         debug: jest.spyOn(console, 'debug').mockImplementation(),
         error: jest.spyOn(console, 'error').mockImplementation(),
       };
+      
+      // Configure Logger for testing
+      Logger._testConfig.setLogLevel('debug'); // Enable all logging levels
+      Logger._testConfig.enableDatabaseLogs(true); // Enable database logging
+      Logger._testConfig.enableAnalysisDebug(true); // Enable analysis logging
     });
 
     afterEach(() => {
       Object.values(consoleSpies).forEach(spy => spy.mockRestore());
+      Logger._testConfig.reset(); // Reset Logger to default state
     });
 
     it('should log warning messages', () => {
@@ -806,14 +813,14 @@ describe('Utils', () => {
 
     it('should log database messages', () => {
       Logger.database('Database operation completed');
-      expect(consoleSpies.info).toHaveBeenCalledWith(
+      expect(consoleSpies.debug).toHaveBeenCalledWith(
         expect.stringContaining('[DATABASE]')
       );
     });
 
     it('should log analysis messages', () => {
       Logger.analysis('Analysis completed');
-      expect(consoleSpies.info).toHaveBeenCalledWith(
+      expect(consoleSpies.debug).toHaveBeenCalledWith(
         expect.stringContaining('[ANALYSIS]')
       );
     });
@@ -831,16 +838,16 @@ describe('Utils', () => {
 
     it('should log performance metrics', () => {
       Logger.performance('test operation', 1500);
-      expect(consoleSpies.info).toHaveBeenCalledWith(
+      expect(consoleSpies.debug).toHaveBeenCalledWith(
         expect.stringContaining('Performance: test operation completed in 1500ms'),
         undefined
       );
     });
 
     it('should log slow operations as warnings', () => {
-      Logger.performance('slow operation', 15000);
+      Logger.performance('slow operation', 15001); // Use 15001ms to exceed the 15000ms threshold
       expect(consoleSpies.warn).toHaveBeenCalledWith(
-        expect.stringContaining('Performance: slow operation completed in 15000ms'),
+        expect.stringContaining('Performance: slow operation completed in 15001ms (SLOW)'),
         undefined
       );
     });
@@ -848,7 +855,7 @@ describe('Utils', () => {
     it('should log performance metrics with details', () => {
       const details = { query: 'SELECT * FROM users', rows: 100 };
       Logger.performance('database query', 2500, details);
-      expect(consoleSpies.info).toHaveBeenCalledWith(
+      expect(consoleSpies.debug).toHaveBeenCalledWith(
         expect.stringContaining('Performance: database query completed in 2500ms'),
         details
       );
@@ -906,6 +913,11 @@ describe('Utils', () => {
 
       // Store original isServer value
       originalIsServer = (Logger as any).isServer;
+      
+      // Configure Logger for testing
+      Logger._testConfig.setLogLevel('debug'); // Enable all logging levels
+      Logger._testConfig.enableDatabaseLogs(true); // Enable database logging  
+      Logger._testConfig.enableAnalysisDebug(true); // Enable analysis logging
     });
 
     afterEach(() => {
@@ -914,6 +926,7 @@ describe('Utils', () => {
       
       // Restore original isServer value
       (Logger as any).isServer = originalIsServer;
+      Logger._testConfig.reset(); // Reset Logger to default state
     });
 
     it('should handle server-side logging for warn messages', () => {

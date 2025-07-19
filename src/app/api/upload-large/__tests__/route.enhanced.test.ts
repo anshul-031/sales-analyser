@@ -1,8 +1,6 @@
-import { POST } from '../route';
-import { DatabaseStorage } from '@/lib/db';
 import { getAuthenticatedUser } from '@/lib/auth';
 import { Logger } from '@/lib/utils';
-import { NextRequest, NextResponse } from 'next/server';
+import { POST } from '../route';
 
 // Mock external dependencies
 jest.mock('@/lib/db');

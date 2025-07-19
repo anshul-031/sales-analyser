@@ -47,6 +47,10 @@ jest.mock('../utils', () => ({
     info: jest.fn(),
     error: jest.fn(),
     debug: jest.fn(),
+    database: jest.fn(),
+    analysis: jest.fn(),
+    performance: jest.fn(),
+    monitor: jest.fn(),
   },
 }));
 

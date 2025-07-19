@@ -14,9 +14,12 @@ jest.mock('@/lib/utils', () => ({
     error: jest.fn(),
     warn: jest.fn(),
     debug: jest.fn(),
+    analysis: jest.fn(),
   },
   AdaptiveTimeout: {
     createAdaptiveTimeout: jest.fn((promise) => promise),
+    createExtendableTimeout: jest.fn((promise) => promise),
+    createProgressiveTimeout: jest.fn((promise) => promise),
   },
   GeminiCircuitBreaker: jest.fn().mockImplementation(() => ({
     execute: jest.fn().mockResolvedValue('mocked result'),
