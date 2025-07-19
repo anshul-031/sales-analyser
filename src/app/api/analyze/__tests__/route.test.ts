@@ -298,9 +298,9 @@ describe('/api/analyze', () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(400);
       expect(data.success).toBe(false);
-      expect(data.error).toContain('Analysis request failed');
+      expect(data.error).toContain('Invalid request body');
     });
 
     it('should handle database errors during analysis creation', async () => {

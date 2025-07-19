@@ -33,7 +33,8 @@
         "echo": true,
         "reveal": "always",
         "focus": false,
-        "panel": "shared"
+        "panel": "shared",
+        "close": true
       },
       "problemMatcher": ["$tsc"]
     },

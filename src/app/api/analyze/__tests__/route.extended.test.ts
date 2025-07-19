@@ -191,8 +191,8 @@ describe('/api/analyze - Extended Coverage Tests', () => {
       const response = await POST(request);
       const data = await response.json();
 
-      // API returns 500 for JSON parsing errors on missing body
-      expect(response.status).toBe(500);
+      // API returns 400 for bad request with missing body
+      expect(response.status).toBe(400);
       expect(data.success).toBe(false);
     });
 

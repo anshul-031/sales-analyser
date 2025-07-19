@@ -157,7 +157,19 @@ export async function POST(request: NextRequest) {
 
     Logger.analysis(`[${requestId}] User authenticated: ${user.id}`);
 
-    const { uploadIds, analysisType, customPrompt, customParameters, selectedActionItemTypes } = await request.json();
+    // Parse request body with error handling
+    let requestData;
+    try {
+      requestData = await request.json();
+    } catch (jsonError) {
+      Logger.warn(`[Analyze API] [${requestId}] Invalid JSON in request body:`, jsonError);
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid request body'
+      }, { status: 400 });
+    }
+
+    const { uploadIds, analysisType, customPrompt, customParameters, selectedActionItemTypes } = requestData;
     Logger.analysis(`[${requestId}] Request payload: ${uploadIds?.length || 0} uploads, type: ${analysisType}`);
 
     if (!uploadIds || !Array.isArray(uploadIds) || uploadIds.length === 0) {
